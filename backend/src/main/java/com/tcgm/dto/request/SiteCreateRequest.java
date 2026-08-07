@@ -1,0 +1,30 @@
+package com.tcgm.dto.request;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+@Data
+public class SiteCreateRequest {
+
+    @NotBlank(message = "Le nom du site est obligatoire")
+    private String name;
+
+    private String reference;
+    private String address;
+    private LocalDateTime startDate;
+    private LocalDateTime endDate;
+    private String status;
+
+    @NotNull(message = "Le client est obligatoire")
+    private Long clientId;
+
+    @NotNull(message = "Le chef de projet est obligatoire")
+    private Long chefProjetId;
+
+    private Long magasinierId;
+    private Long agentSaisieId;
+    private Long chefChantierId;
+}
