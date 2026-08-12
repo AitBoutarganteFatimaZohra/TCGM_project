@@ -8,12 +8,12 @@ import com.tcgm.exception.BadRequestException;
 import com.tcgm.exception.ResourceNotFoundException;
 import com.tcgm.mapper.TacheMapper;
 import com.tcgm.model.Tache;
-import com.tcgm.model.Site;
+import com.tcgm.model.Travaux;
 import com.tcgm.model.Ouvrier;
 import com.tcgm.model.AffectationOuvrierTache;
 import com.tcgm.model.enums.StatutTache;
 import com.tcgm.repository.TacheRepository;
-import com.tcgm.repository.SiteRepository;
+import com.tcgm.repository.TravauxRepository;
 import com.tcgm.repository.OuvrierRepository;
 import com.tcgm.repository.AffectationOuvrierTacheRepository;
 import com.tcgm.service.TacheService;
@@ -34,7 +34,7 @@ import java.time.LocalDateTime;
 public class TacheServiceImpl implements TacheService {
 
     private final TacheRepository tacheRepository;
-    private final SiteRepository siteRepository;
+    private final TravauxRepository travauxRepository;
     private final OuvrierRepository ouvrierRepository;
     private final AffectationOuvrierTacheRepository affectationRepository;
     private final TacheMapper tacheMapper;
@@ -45,12 +45,11 @@ public class TacheServiceImpl implements TacheService {
     public TacheResponse createTache(TacheCreateRequest request) {
         log.info("Création d'une nouvelle tâche: {}", request.getTitle());
 
-        // Vérifier que le site existe
-        Site site = siteRepository.findById(request.getSiteId())
-            .orElseThrow(() -> new ResourceNotFoundException("Site", request.getSiteId()));
+        Travaux travaux = travauxRepository.findById(request.getTravauxId())
+            .orElseThrow(() -> new ResourceNotFoundException("Travaux", request.getTravauxId()));
 
         Tache tache = tacheMapper.toEntity(request);
-        tache.setSite(site);
+        tache.setTravaux(travaux);
         tache = tacheRepository.save(tache);
 
         journalService.logAction(
@@ -97,7 +96,7 @@ public class TacheServiceImpl implements TacheService {
     }
 
     @Override
-    public Page<TacheResponse> getAllTaches(Long siteId, String status, String search, Pageable pageable) {
+    public Page<TacheResponse> getAllTaches(Long travauxId, String status, String search, Pageable pageable) {
         log.debug("Récupération de toutes les tâches");
 
         StatutTache statut = null;
@@ -109,7 +108,8 @@ public class TacheServiceImpl implements TacheService {
             }
         }
 
-        Page<Tache> taches = tacheRepository.findTachesWithFilters(siteId, statut, search, pageable);
+        // CORRIGÉ : utiliser findTachesWithFilters (sans "ByTravaux")
+        Page<Tache> taches = tacheRepository.findTachesWithFilters(travauxId, statut, search, pageable);
         return taches.map(tacheMapper::toResponse);
     }
 
@@ -150,7 +150,6 @@ public class TacheServiceImpl implements TacheService {
 
         tache.setStatus(newStatus);
         
-        // Si la tâche est terminée, mettre à jour la date de completion
         if (newStatus == StatutTache.TERMINEE && tache.getCompletedDate() == null) {
             tache.setCompletedDate(LocalDateTime.now());
         }
@@ -180,7 +179,6 @@ public class TacheServiceImpl implements TacheService {
         Ouvrier ouvrier = ouvrierRepository.findById(ouvrierId)
             .orElseThrow(() -> new ResourceNotFoundException("Ouvrier", ouvrierId));
 
-        // Vérifier si l'ouvrier est déjà affecté à cette tâche
         if (affectationRepository.isOuvrierAffectedToTache(ouvrierId, tacheId)) {
             throw new BadRequestException("Cet ouvrier est déjà affecté à cette tâche");
         }
@@ -233,14 +231,14 @@ public class TacheServiceImpl implements TacheService {
     }
 
     @Override
-    public Page<TacheResponse> getTachesBySite(Long siteId, Pageable pageable) {
-        log.debug("Récupération des tâches du site ID: {}", siteId);
+    public Page<TacheResponse> getTachesByTravaux(Long travauxId, Pageable pageable) {
+        log.debug("Récupération des tâches des travaux ID: {}", travauxId);
 
-        if (!siteRepository.existsById(siteId)) {
-            throw new ResourceNotFoundException("Site", siteId);
+        if (!travauxRepository.existsById(travauxId)) {
+            throw new ResourceNotFoundException("Travaux", travauxId);
         }
 
-        Page<Tache> taches = tacheRepository.findBySiteId(siteId, pageable);
+        Page<Tache> taches = tacheRepository.findByTravauxId(travauxId, pageable);
         return taches.map(tacheMapper::toResponse);
     }
 }

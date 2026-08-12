@@ -11,9 +11,14 @@ public interface OuvrierService {
     OuvrierResponse createOuvrier(OuvrierCreateRequest request);
     OuvrierResponse updateOuvrier(Long id, OuvrierUpdateRequest request);
     OuvrierResponse getOuvrierById(Long id);
-    Page<OuvrierResponse> getAllOuvriers(Long siteId, String specialite, Boolean active, String search, Pageable pageable);
+    
+    // MODIFIÉ : siteId → chantierId
+    Page<OuvrierResponse> getAllOuvriers(Long chantierId, String specialite, Boolean active, String search, Pageable pageable);
+    
     void deleteOuvrier(Long id);
     OuvrierResponse affecterOuvrierSite(AffectationSiteRequest request);
     void desaffecterOuvrierSite(Long affectationId);
-    Page<OuvrierResponse> getOuvriersBySite(Long siteId, Pageable pageable);
+    
+    // MODIFIÉ : getOuvriersBySite → getOuvriersByChantier
+    Page<OuvrierResponse> getOuvriersByChantier(Long chantierId, Pageable pageable);
 }

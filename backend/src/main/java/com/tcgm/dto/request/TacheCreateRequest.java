@@ -1,3 +1,4 @@
+
 package com.tcgm.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
@@ -13,10 +14,14 @@ public class TacheCreateRequest {
     private String title;
 
     private String description;
+
     private LocalDateTime plannedDate;
+
     private String status;
+
     private Integer priority;
 
-    @NotNull(message = "Le site est obligatoire")
-    private Long siteId;
+    @NotNull(message = "Les travaux sont obligatoires")
+    private Long travauxId;
 }
+

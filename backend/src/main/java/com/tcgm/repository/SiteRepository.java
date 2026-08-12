@@ -147,8 +147,12 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
                                     @Param("search") String search,
                                     Pageable pageable);
 
+    // =========================================================
+    // NOUVELLES MÉTHODES POUR TRAVAUX ET AFFECTATION
+    // =========================================================
+
     /**
-     * Trouver les sites avec leurs relations (fetch eager)
+     * Trouver les sites avec leurs relations (fetch eager) - Version complète
      */
     @Query("SELECT s FROM Site s LEFT JOIN FETCH s.client " +
            "LEFT JOIN FETCH s.chefProjet " +
@@ -159,14 +163,37 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
     Optional<Site> findByIdWithRelations(@Param("id") Long id);
 
     /**
-     * Trouver les sites avec leurs tâches
+     * Trouver un site avec ses travaux (NOUVEAU)
      */
-    @Query("SELECT s FROM Site s LEFT JOIN FETCH s.taches WHERE s.id = :id")
-    Optional<Site> findByIdWithTaches(@Param("id") Long id);
+    @Query("SELECT s FROM Site s LEFT JOIN FETCH s.travaux WHERE s.id = :id")
+    Optional<Site> findByIdWithTravaux(@Param("id") Long id);
 
     /**
-     * Trouver les sites avec leurs affectations d'ouvriers
+     * Trouver un site avec ses affectations (NOUVEAU)
      */
-    @Query("SELECT s FROM Site s LEFT JOIN FETCH s.affectationsOuvriers WHERE s.id = :id")
-    Optional<Site> findByIdWithOuvriers(@Param("id") Long id);
+    @Query("SELECT s FROM Site s LEFT JOIN FETCH s.affectations WHERE s.id = :id")
+    Optional<Site> findByIdWithAffectations(@Param("id") Long id);
+
+    /**
+     * Trouver un site avec toutes ses relations (travaux + taches) (NOUVEAU)
+     */
+    @Query("SELECT s FROM Site s LEFT JOIN FETCH s.travaux t LEFT JOIN FETCH t.taches WHERE s.id = :id")
+    Optional<Site> findByIdWithAllRelations(@Param("id") Long id);
+
+    /**
+     * Trouver un site avec toutes ses relations (travaux, taches, affectations) (NOUVEAU)
+     */
+    @Query("SELECT s FROM Site s " +
+           "LEFT JOIN FETCH s.travaux t " +
+           "LEFT JOIN FETCH t.taches " +
+           "LEFT JOIN FETCH s.affectations a " +
+           "LEFT JOIN FETCH a.ouvrier " +
+           "WHERE s.id = :id")
+    Optional<Site> findByIdWithAll(@Param("id") Long id);
+
+    /**
+     * Trouver les sites avec leurs travaux et tâches (NOUVEAU)
+     */
+    @Query("SELECT DISTINCT s FROM Site s LEFT JOIN FETCH s.travaux t LEFT JOIN FETCH t.taches")
+    List<Site> findAllWithTravauxAndTaches();
 }

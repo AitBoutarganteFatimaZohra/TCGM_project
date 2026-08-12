@@ -46,7 +46,10 @@ public class Site {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Relations
+    // =========================================================
+    // RELATIONS EXISTANTES
+    // =========================================================
+
     @ManyToOne
     @JoinColumn(name = "client_id", nullable = false)
     private Client client;
@@ -67,14 +70,53 @@ public class Site {
     @JoinColumn(name = "chef_chantier_id")
     private User chefChantier;
 
-    @OneToMany(mappedBy = "site", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Tache> taches = new ArrayList<>();
-
-    @OneToMany(mappedBy = "site", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<AffectationOuvrierSite> affectationsOuvriers = new ArrayList<>();
+    // =========================================================
+    // RELATIONS À GARDER
+    // =========================================================
 
     @OneToMany(mappedBy = "site", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<DossierPointage> dossiersPointage = new ArrayList<>();
+
+    // =========================================================
+    // NOUVELLES RELATIONS
+    // =========================================================
+
+    @OneToMany(mappedBy = "chantier", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Travaux> travaux = new ArrayList<>();
+
+    @OneToMany(mappedBy = "chantier", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Affectation> affectations = new ArrayList<>();
+
+    // =========================================================
+    // RELATIONS À SUPPRIMER (progressivement)
+    // =========================================================
+
+    // SUPPRIMER : @OneToMany(mappedBy = "site") private List<Tache> taches;
+    // SUPPRIMER : @OneToMany(mappedBy = "site") private List<AffectationOuvrierSite> affectationsOuvriers;
+
+    // =========================================================
+    // MÉTHODES UTILITAIRES
+    // =========================================================
+
+    public void addTravaux(Travaux travaux) {
+        this.travaux.add(travaux);
+        travaux.setChantier(this);
+    }
+
+    public void removeTravaux(Travaux travaux) {
+        this.travaux.remove(travaux);
+        travaux.setChantier(null);
+    }
+
+    public void addAffectation(Affectation affectation) {
+        this.affectations.add(affectation);
+        affectation.setChantier(this);
+    }
+
+    public void removeAffectation(Affectation affectation) {
+        this.affectations.remove(affectation);
+        affectation.setChantier(null);
+    }
 
     @PrePersist
     protected void onCreate() {

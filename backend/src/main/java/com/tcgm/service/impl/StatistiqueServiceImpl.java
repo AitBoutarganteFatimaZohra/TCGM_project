@@ -4,6 +4,7 @@ import com.tcgm.repository.*;
 import com.tcgm.service.StatistiqueService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -27,18 +28,14 @@ public class StatistiqueServiceImpl implements StatistiqueService {
 
         Map<String, Object> stats = new HashMap<>();
 
-        // Statistiques générales
         stats.put("totalSites", siteRepository.count());
         stats.put("totalOuvriers", ouvrierRepository.count());
         stats.put("totalTaches", tacheRepository.count());
         stats.put("totalClients", clientRepository.count());
         stats.put("totalUsers", userRepository.count());
         stats.put("totalPointages", dossierRepository.count());
-
-        // Ouvriers actifs
         stats.put("ouvriersActifs", ouvrierRepository.countActiveOuvriers());
 
-        // Statistiques par statut de site
         var sitesByStatus = siteRepository.countSitesByStatus();
         Map<String, Long> sitesStats = new HashMap<>();
         for (Object[] row : sitesByStatus) {
@@ -46,7 +43,6 @@ public class StatistiqueServiceImpl implements StatistiqueService {
         }
         stats.put("sitesByStatus", sitesStats);
 
-        // Statistiques par statut de tâche
         var tachesByStatus = tacheRepository.countTachesByStatus();
         Map<String, Long> tachesStats = new HashMap<>();
         for (Object[] row : tachesByStatus) {
@@ -54,7 +50,6 @@ public class StatistiqueServiceImpl implements StatistiqueService {
         }
         stats.put("tachesByStatus", tachesStats);
 
-        // Statistiques par statut de pointage
         var pointagesByStatus = dossierRepository.countDossiersByStatus();
         Map<String, Long> pointagesStats = new HashMap<>();
         for (Object[] row : pointagesByStatus) {
@@ -77,7 +72,6 @@ public class StatistiqueServiceImpl implements StatistiqueService {
         stats.put("sitesPlanifies", siteRepository.countByStatus(com.tcgm.model.enums.StatutSite.PLANIFIE));
         stats.put("sitesSuspendus", siteRepository.countByStatus(com.tcgm.model.enums.StatutSite.SUSPENDU));
 
-        // Répartition par client
         var sitesByClient = siteRepository.countSitesByClient();
         Map<String, Long> clientsStats = new HashMap<>();
         for (Object[] row : sitesByClient) {
@@ -94,27 +88,29 @@ public class StatistiqueServiceImpl implements StatistiqueService {
 
         Map<String, Object> stats = new HashMap<>();
 
-        // Vérifier que le site existe
         if (!siteRepository.existsById(siteId)) {
             stats.put("error", "Site non trouvé");
             return stats;
         }
 
         stats.put("siteId", siteId);
-        stats.put("totalTaches", tacheRepository.findBySiteId(siteId, org.springframework.data.domain.Pageable.unpaged()).getTotalElements());
-        stats.put("tachesTerminees", tacheRepository.countCompletedTachesBySite(siteId));
-        stats.put("totalOuvriers", ouvrierRepository.countOuvriersBySite(siteId));
-        stats.put("totalPointages", dossierRepository.findBySiteId(siteId, org.springframework.data.domain.Pageable.unpaged()).getTotalElements());
+        
+        // Récupérer les travaux du site pour les statistiques
+        // Pour l'instant, on utilise siteId comme travauxId car relation 1:1
+        Long travauxId = siteId;
+        
+        stats.put("totalTaches", tacheRepository.findByTravauxId(travauxId, Pageable.unpaged()).getTotalElements());
+        stats.put("tachesTerminees", tacheRepository.countCompletedTachesByTravaux(travauxId));
+        stats.put("totalOuvriers", ouvrierRepository.countOuvriersByChantier(siteId));
+        stats.put("totalPointages", dossierRepository.findBySiteId(siteId, Pageable.unpaged()).getTotalElements());
 
-        // Tâches par statut
-        var tachesByStatus = tacheRepository.countTachesByStatusForSite(siteId);
+        var tachesByStatus = tacheRepository.countTachesByStatusForTravaux(travauxId);
         Map<String, Long> tachesStats = new HashMap<>();
         for (Object[] row : tachesByStatus) {
             tachesStats.put(row[0].toString(), (Long) row[1]);
         }
         stats.put("tachesByStatus", tachesStats);
 
-        // Pointages par statut
         var pointagesByStatus = dossierRepository.countDossiersByStatusForSite(siteId);
         Map<String, Long> pointagesStats = new HashMap<>();
         for (Object[] row : pointagesByStatus) {
@@ -122,7 +118,6 @@ public class StatistiqueServiceImpl implements StatistiqueService {
         }
         stats.put("pointagesByStatus", pointagesStats);
 
-        // Taux d'avancement
         long totalTaches = (long) stats.get("totalTaches");
         long tachesTerminees = (long) stats.get("tachesTerminees");
         stats.put("tauxAvancement", totalTaches > 0 ? (tachesTerminees * 100.0 / totalTaches) : 0);
@@ -140,7 +135,6 @@ public class StatistiqueServiceImpl implements StatistiqueService {
         stats.put("ouvriersActifs", ouvrierRepository.countActiveOuvriers());
         stats.put("ouvriersInactifs", ouvrierRepository.count() - ouvrierRepository.countActiveOuvriers());
 
-        // Ouvriers par spécialité
         var bySpecialite = ouvrierRepository.countOuvriersBySpecialite();
         Map<String, Long> specialitesStats = new HashMap<>();
         for (Object[] row : bySpecialite) {
@@ -153,16 +147,15 @@ public class StatistiqueServiceImpl implements StatistiqueService {
 
     @Override
     public Map<String, Object> getOuvriersStatsBySite(Long siteId) {
-        log.debug("Récupération des statistiques des ouvriers du site {}", siteId);
+        log.debug("Récupération des statistiques des ouvriers du chantier {}", siteId);
 
         Map<String, Object> stats = new HashMap<>();
 
-        stats.put("siteId", siteId);
-        stats.put("totalOuvriers", ouvrierRepository.countOuvriersBySite(siteId));
-        stats.put("ouvriersActifs", ouvrierRepository.countActiveOuvriersBySite(siteId));
+        stats.put("chantierId", siteId);
+        stats.put("totalOuvriers", ouvrierRepository.countOuvriersByChantier(siteId));
+        stats.put("ouvriersActifs", ouvrierRepository.countActiveOuvriersByChantier(siteId));
 
-        // Ouvriers par spécialité sur le site
-        var bySpecialite = ouvrierRepository.countOuvriersBySpecialiteOnSite(siteId);
+        var bySpecialite = ouvrierRepository.countOuvriersBySpecialiteOnChantier(siteId);
         Map<String, Long> specialitesStats = new HashMap<>();
         for (Object[] row : bySpecialite) {
             specialitesStats.put(row[0] != null ? row[0].toString() : "Non spécifié", (Long) row[1]);
@@ -179,9 +172,8 @@ public class StatistiqueServiceImpl implements StatistiqueService {
         Map<String, Object> stats = new HashMap<>();
 
         stats.put("siteId", siteId);
-        stats.put("totalDossiers", dossierRepository.findBySiteId(siteId, org.springframework.data.domain.Pageable.unpaged()).getTotalElements());
+        stats.put("totalDossiers", dossierRepository.findBySiteId(siteId, Pageable.unpaged()).getTotalElements());
 
-        // Pointages par statut
         var byStatus = dossierRepository.countDossiersByStatusForSite(siteId);
         Map<String, Long> statusStats = new HashMap<>();
         for (Object[] row : byStatus) {
@@ -200,7 +192,6 @@ public class StatistiqueServiceImpl implements StatistiqueService {
 
         stats.put("totalTaches", tacheRepository.count());
 
-        // Tâches par statut
         var byStatus = tacheRepository.countTachesByStatus();
         Map<String, Long> statusStats = new HashMap<>();
         for (Object[] row : byStatus) {
@@ -208,7 +199,6 @@ public class StatistiqueServiceImpl implements StatistiqueService {
         }
         stats.put("tachesByStatus", statusStats);
 
-        // Tâches par priorité
         var byPriority = tacheRepository.countTachesByPriority();
         Map<String, Long> priorityStats = new HashMap<>();
         for (Object[] row : byPriority) {
@@ -226,18 +216,19 @@ public class StatistiqueServiceImpl implements StatistiqueService {
         Map<String, Object> stats = new HashMap<>();
 
         stats.put("siteId", siteId);
-        stats.put("totalTaches", tacheRepository.findBySiteId(siteId, org.springframework.data.domain.Pageable.unpaged()).getTotalElements());
-        stats.put("tachesTerminees", tacheRepository.countCompletedTachesBySite(siteId));
+        
+        Long travauxId = siteId; // Relation 1:1 entre site et travaux pour l'instant
+        
+        stats.put("totalTaches", tacheRepository.findByTravauxId(travauxId, Pageable.unpaged()).getTotalElements());
+        stats.put("tachesTerminees", tacheRepository.countCompletedTachesByTravaux(travauxId));
 
-        // Tâches par statut
-        var byStatus = tacheRepository.countTachesByStatusForSite(siteId);
+        var byStatus = tacheRepository.countTachesByStatusForTravaux(travauxId);
         Map<String, Long> statusStats = new HashMap<>();
         for (Object[] row : byStatus) {
             statusStats.put(row[0].toString(), (Long) row[1]);
         }
         stats.put("tachesByStatus", statusStats);
 
-        // Taux d'avancement
         long totalTaches = (long) stats.get("totalTaches");
         long tachesTerminees = (long) stats.get("tachesTerminees");
         stats.put("tauxAvancement", totalTaches > 0 ? (tachesTerminees * 100.0 / totalTaches) : 0);
@@ -253,7 +244,6 @@ public class StatistiqueServiceImpl implements StatistiqueService {
 
         stats.put("totalClients", clientRepository.count());
 
-        // Clients avec le plus de sites
         var sitesByClient = siteRepository.countSitesByClient();
         Map<String, Long> clientsStats = new HashMap<>();
         for (Object[] row : sitesByClient) {

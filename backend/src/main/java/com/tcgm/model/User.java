@@ -1,8 +1,10 @@
+
 package com.tcgm.model;
 
 import com.tcgm.model.enums.RoleName;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -12,11 +14,12 @@ import java.util.*;
 
 @Entity
 @Table(name = "users")
+@Inheritance(strategy = InheritanceType.JOINED)
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@SuperBuilder
 public class User implements UserDetails {
 
     @Id
@@ -39,6 +42,7 @@ public class User implements UserDetails {
     private String phone;
 
     @Column(nullable = false)
+    @Builder.Default
     private Boolean enabled = true;
 
     @Column(name = "last_login")
@@ -50,42 +54,68 @@ public class User implements UserDetails {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Relations
+    // =========================================================
+    // RELATION : ROLES
+    // =========================================================
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "user_roles",
         joinColumns = @JoinColumn(name = "user_id"),
         inverseJoinColumns = @JoinColumn(name = "role_id")
     )
+    @Builder.Default
     private Set<Role> roles = new HashSet<>();
 
-    // Relations avec Site (pour les différents rôles)
+    // =========================================================
+    // RELATIONS AVEC SITE
+    // =========================================================
+
     @OneToMany(mappedBy = "chefProjet")
+    @Builder.Default
     private List<Site> sitesAsChefProjet = new ArrayList<>();
 
     @OneToMany(mappedBy = "magasinier")
+    @Builder.Default
     private List<Site> sitesAsMagasinier = new ArrayList<>();
 
     @OneToMany(mappedBy = "agentSaisie")
+    @Builder.Default
     private List<Site> sitesAsAgentSaisie = new ArrayList<>();
 
     @OneToMany(mappedBy = "chefChantier")
+    @Builder.Default
     private List<Site> sitesAsChefChantier = new ArrayList<>();
 
-    // Relations avec DossierPointage
+    // =========================================================
+    // RELATIONS AVEC DOSSIER POINTAGE
+    // =========================================================
+
     @OneToMany(mappedBy = "createdBy")
+    @Builder.Default
     private List<DossierPointage> dossiersCreated = new ArrayList<>();
 
     @OneToMany(mappedBy = "validatedBy")
+    @Builder.Default
     private List<DossierPointage> dossiersValidated = new ArrayList<>();
 
-    // Relation avec Journal
+    // =========================================================
+    // RELATION AVEC JOURNAL
+    // =========================================================
+
     @OneToMany(mappedBy = "user")
+    @Builder.Default
     private List<JournalOperation> journalOperations = new ArrayList<>();
+
+    // =========================================================
+    // JPA CALLBACKS
+    // =========================================================
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
     }
 
     @PreUpdate
@@ -93,15 +123,33 @@ public class User implements UserDetails {
         updatedAt = LocalDateTime.now();
     }
 
+    // =========================================================
+    // SPRING SECURITY
+    // =========================================================
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
+
         Set<GrantedAuthority> authorities = new HashSet<>();
+
         for (Role role : roles) {
-            authorities.add(new SimpleGrantedAuthority("ROLE_" + role.getName().name()));
+
+            authorities.add(
+                new SimpleGrantedAuthority(
+                    "ROLE_" + role.getName().name()
+                )
+            );
+
             for (Permission permission : role.getPermissions()) {
-                authorities.add(new SimpleGrantedAuthority(permission.getName()));
+
+                authorities.add(
+                    new SimpleGrantedAuthority(
+                        permission.getName()
+                    )
+                );
             }
         }
+
         return authorities;
     }
 

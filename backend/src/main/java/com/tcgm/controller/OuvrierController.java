@@ -36,12 +36,12 @@ public class OuvrierController {
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER')")
     public ResponseEntity<Page<OuvrierResponse>> getAllOuvriers(
-            @RequestParam(required = false) Long siteId,
+            @RequestParam(required = false) Long chantierId,  // ← MODIFIÉ : siteId → chantierId
             @RequestParam(required = false) String specialite,
             @RequestParam(required = false) Boolean active,
             @RequestParam(required = false) String search,
             Pageable pageable) {
-        return ResponseEntity.ok(ouvrierService.getAllOuvriers(siteId, specialite, active, search, pageable));
+        return ResponseEntity.ok(ouvrierService.getAllOuvriers(chantierId, specialite, active, search, pageable));
     }
 
     @PutMapping("/{id}")
@@ -72,11 +72,11 @@ public class OuvrierController {
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/site/{siteId}")
+    @GetMapping("/chantier/{chantierId}")  // ← MODIFIÉ : site → chantier
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER')")
-    public ResponseEntity<Page<OuvrierResponse>> getOuvriersBySite(
-            @PathVariable Long siteId,
+    public ResponseEntity<Page<OuvrierResponse>> getOuvriersByChantier(  // ← MODIFIÉ : getOuvriersBySite → getOuvriersByChantier
+            @PathVariable Long chantierId,
             Pageable pageable) {
-        return ResponseEntity.ok(ouvrierService.getOuvriersBySite(siteId, pageable));
+        return ResponseEntity.ok(ouvrierService.getOuvriersByChantier(chantierId, pageable));
     }
 }

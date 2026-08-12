@@ -5,5 +5,6 @@ public enum RoleName {
     CHEF_PROJET,
     CHEF_CHANTIER,
     MAGASINIER,
-    AGENT_SAISIE
+    AGENT_SAISIE,
+    RESPONSABLE_RH   // ← AJOUTER CETTE LIGNE
 }

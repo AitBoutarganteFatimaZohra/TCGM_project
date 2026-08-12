@@ -10,7 +10,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
-
+import java.util.ArrayList;
 import java.util.List;
 
 @Mapper(componentModel = "spring")
@@ -25,8 +25,10 @@ public interface SiteMapper {
     @Mapping(target = "magasinier", expression = "java(mapUser(site.getMagasinier()))")
     @Mapping(target = "agentSaisie", expression = "java(mapUser(site.getAgentSaisie()))")
     @Mapping(target = "chefChantier", expression = "java(mapUser(site.getChefChantier()))")
-    @Mapping(target = "totalTaches", expression = "java(site.getTaches() != null ? site.getTaches().size() : 0)")
-    @Mapping(target = "totalOuvriers", expression = "java(site.getAffectationsOuvriers() != null ? site.getAffectationsOuvriers().size() : 0)")
+    // MODIFIÉ : taches → travaux
+    @Mapping(target = "totalTaches", expression = "java(site.getTravaux() != null ? site.getTravaux().size() : 0)")
+    // MODIFIÉ : affectationsOuvriers → affectations
+    @Mapping(target = "totalOuvriers", expression = "java(site.getAffectations() != null ? site.getAffectations().size() : 0)")
     SiteResponse toResponse(Site site);
 
     @Mapping(target = "client", expression = "java(mapClientDetail(site))")
@@ -34,10 +36,14 @@ public interface SiteMapper {
     @Mapping(target = "magasinier", expression = "java(mapUserDetail(site.getMagasinier()))")
     @Mapping(target = "agentSaisie", expression = "java(mapUserDetail(site.getAgentSaisie()))")
     @Mapping(target = "chefChantier", expression = "java(mapUserDetail(site.getChefChantier()))")
-    @Mapping(target = "taches", expression = "java(mapTachesBrief(site.getTaches()))")
-    @Mapping(target = "ouvriers", expression = "java(mapOuvriersBrief(site.getAffectationsOuvriers()))")
-    @Mapping(target = "totalTaches", expression = "java(site.getTaches() != null ? site.getTaches().size() : 0)")
-    @Mapping(target = "totalOuvriers", expression = "java(site.getAffectationsOuvriers() != null ? site.getAffectationsOuvriers().size() : 0)")
+    // MODIFIÉ : taches → travaux
+    @Mapping(target = "taches", expression = "java(mapTachesBrief(site.getTravaux()))")
+    // MODIFIÉ : affectationsOuvriers → affectations
+    @Mapping(target = "ouvriers", expression = "java(mapOuvriersBrief(site.getAffectations()))")
+    // MODIFIÉ : taches → travaux
+    @Mapping(target = "totalTaches", expression = "java(site.getTravaux() != null ? site.getTravaux().size() : 0)")
+    // MODIFIÉ : affectationsOuvriers → affectations
+    @Mapping(target = "totalOuvriers", expression = "java(site.getAffectations() != null ? site.getAffectations().size() : 0)")
     @Mapping(target = "totalPointages", expression = "java(site.getDossiersPointage() != null ? site.getDossiersPointage().size() : 0)")
     SiteDetailResponse toDetailResponse(Site site);
 
@@ -51,11 +57,12 @@ public interface SiteMapper {
     @Mapping(target = "magasinier", ignore = true)
     @Mapping(target = "agentSaisie", ignore = true)
     @Mapping(target = "chefChantier", ignore = true)
-    @Mapping(target = "status", expression = "java(com.tcgm.model.enums.StatutSite.valueOf(request.getStatus()))")  // ← CORRIGÉ
+    @Mapping(target = "status", expression = "java(com.tcgm.model.enums.StatutSite.valueOf(request.getStatus()))")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
-    @Mapping(target = "taches", ignore = true)
-    @Mapping(target = "affectationsOuvriers", ignore = true)
+    // SUPPRIMER les références à taches et affectationsOuvriers
+    @Mapping(target = "travaux", ignore = true)
+    @Mapping(target = "affectations", ignore = true)
     @Mapping(target = "dossiersPointage", ignore = true)
     Site toEntity(SiteCreateRequest request);
 
@@ -71,8 +78,8 @@ public interface SiteMapper {
     @Mapping(target = "chefChantier", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
-    @Mapping(target = "taches", ignore = true)
-    @Mapping(target = "affectationsOuvriers", ignore = true)
+    @Mapping(target = "travaux", ignore = true)
+    @Mapping(target = "affectations", ignore = true)
     @Mapping(target = "dossiersPointage", ignore = true)
     void updateEntity(@MappingTarget Site site, SiteUpdateRequest request);
 
@@ -84,7 +91,7 @@ public interface SiteMapper {
     List<SiteDetailResponse> toDetailResponseList(List<Site> sites);
 
     // =========================================================
-    // MÉTHODES UTILITAIRES (implémentées par défaut)
+    // MÉTHODES UTILITAIRES
     // =========================================================
 
     default SiteResponse.ClientBrief mapClient(Site site) {
@@ -128,9 +135,11 @@ public interface SiteMapper {
             .build();
     }
 
-    default List<SiteDetailResponse.TacheBrief> mapTachesBrief(List<com.tcgm.model.Tache> taches) {
-        if (taches == null) return null;
-        return taches.stream()
+    // MODIFIÉ : prend maintenant une liste de Travaux
+    default List<SiteDetailResponse.TacheBrief> mapTachesBrief(List<com.tcgm.model.Travaux> travaux) {
+        if (travaux == null) return null;
+        return travaux.stream()
+            .flatMap(t -> t.getTaches().stream())
             .map(t -> SiteDetailResponse.TacheBrief.builder()
                 .id(t.getId())
                 .title(t.getTitle())
@@ -140,7 +149,8 @@ public interface SiteMapper {
             .collect(java.util.stream.Collectors.toList());
     }
 
-    default List<SiteDetailResponse.OuvrierBrief> mapOuvriersBrief(List<com.tcgm.model.AffectationOuvrierSite> affectations) {
+    // MODIFIÉ : prend maintenant une liste d'Affectation
+    default List<SiteDetailResponse.OuvrierBrief> mapOuvriersBrief(List<com.tcgm.model.Affectation> affectations) {
         if (affectations == null) return null;
         return affectations.stream()
             .filter(a -> a.getOuvrier() != null)

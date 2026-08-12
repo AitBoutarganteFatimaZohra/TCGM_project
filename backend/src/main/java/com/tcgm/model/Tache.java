@@ -45,10 +45,13 @@ public class Tache {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Relations
-    @ManyToOne
-    @JoinColumn(name = "site_id", nullable = false)
-    private Site site;
+    // =========================================================
+    // RELATIONS MODIFIÉES
+    // =========================================================
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "travaux_id", nullable = false)
+    private Travaux travaux;
 
     @OneToMany(mappedBy = "tache", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<AffectationOuvrierTache> affectationsOuvriers = new ArrayList<>();

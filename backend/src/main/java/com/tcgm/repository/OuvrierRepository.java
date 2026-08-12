@@ -43,111 +43,290 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
      */
     List<Ouvrier> findByActiveFalse();
 
+
     // =========================================================
-    // RECHERCHES PAR SITE
+    // RECHERCHES PAR CHANTIER
     // =========================================================
 
     /**
-     * Trouver les ouvriers affectés à un site
+     * Trouver les ouvriers affectés à un chantier
+     * avec une affectation EN_COURS.
      */
-    @Query("SELECT DISTINCT o FROM Ouvrier o JOIN o.affectationsSites a " +
-           "WHERE a.site.id = :siteId AND a.active = true")
-    Page<Ouvrier> findOuvriersBySite(@Param("siteId") Long siteId, Pageable pageable);
+    @Query("""
+        SELECT DISTINCT o
+        FROM Ouvrier o
+        JOIN o.affectations a
+        WHERE a.chantier.id = :chantierId
+        AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+        """)
+    Page<Ouvrier> findOuvriersByChantier(
+            @Param("chantierId") Long chantierId,
+            Pageable pageable
+    );
+
 
     /**
-     * Trouver les ouvriers actifs affectés à un site
+     * Trouver les ouvriers actifs affectés à un chantier.
      */
-    @Query("SELECT DISTINCT o FROM Ouvrier o JOIN o.affectationsSites a " +
-           "WHERE a.site.id = :siteId AND o.active = true AND a.active = true")
-    List<Ouvrier> findActiveOuvriersBySite(@Param("siteId") Long siteId);
+    @Query("""
+        SELECT DISTINCT o
+        FROM Ouvrier o
+        JOIN o.affectations a
+        WHERE a.chantier.id = :chantierId
+        AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+        AND o.active = true
+        """)
+    List<Ouvrier> findActiveOuvriersByChantier(
+            @Param("chantierId") Long chantierId
+    );
+
 
     /**
-     * Trouver les ouvriers non affectés à un site
+     * Trouver les ouvriers non affectés à un chantier.
      */
-    @Query("SELECT o FROM Ouvrier o WHERE o.id NOT IN " +
-           "(SELECT a.ouvrier.id FROM AffectationOuvrierSite a " +
-           "WHERE a.site.id = :siteId AND a.active = true)")
-    Page<Ouvrier> findOuvriersNotAffectedToSite(@Param("siteId") Long siteId, Pageable pageable);
+    @Query("""
+        SELECT o
+        FROM Ouvrier o
+        WHERE o.id NOT IN (
+            SELECT a.ouvrier.id
+            FROM Affectation a
+            WHERE a.chantier.id = :chantierId
+            AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+        )
+        """)
+    Page<Ouvrier> findOuvriersNotAffectedToChantier(
+            @Param("chantierId") Long chantierId,
+            Pageable pageable
+    );
+
 
     // =========================================================
     // RECHERCHES AVEC FILTRES
     // =========================================================
 
     /**
-     * Recherche d'ouvriers avec filtres
+     * Recherche d'ouvriers avec filtres.
      */
-    @Query("SELECT o FROM Ouvrier o WHERE " +
-           "(:specialite IS NULL OR o.specialite = :specialite) AND " +
-           "(:active IS NULL OR o.active = :active) AND " +
-           "(:search IS NULL OR LOWER(o.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(o.lastName) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(o.cin) LIKE LOWER(CONCAT('%', :search, '%')))")
-    Page<Ouvrier> findOuvriersWithFilters(@Param("specialite") String specialite,
-                                          @Param("active") Boolean active,
-                                          @Param("search") String search,
-                                          Pageable pageable);
+    @Query("""
+        SELECT o
+        FROM Ouvrier o
+        WHERE (:specialite IS NULL OR o.specialite = :specialite)
+        AND (:active IS NULL OR o.active = :active)
+        AND (
+            :search IS NULL
+            OR LOWER(o.firstName) LIKE LOWER(CONCAT('%', :search, '%'))
+            OR LOWER(o.lastName) LIKE LOWER(CONCAT('%', :search, '%'))
+            OR LOWER(o.cin) LIKE LOWER(CONCAT('%', :search, '%'))
+        )
+        """)
+    Page<Ouvrier> findOuvriersWithFilters(
+            @Param("specialite") String specialite,
+            @Param("active") Boolean active,
+            @Param("search") String search,
+            Pageable pageable
+    );
+
 
     /**
-     * Recherche d'ouvriers par site avec filtres
+     * Recherche d'ouvriers par chantier avec filtres.
      */
-    @Query("SELECT DISTINCT o FROM Ouvrier o JOIN o.affectationsSites a " +
-           "WHERE a.site.id = :siteId AND a.active = true AND " +
-           "(:specialite IS NULL OR o.specialite = :specialite) AND " +
-           "(:search IS NULL OR LOWER(o.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(o.lastName) LIKE LOWER(CONCAT('%', :search, '%')))")
-    Page<Ouvrier> findOuvriersBySiteWithFilters(@Param("siteId") Long siteId,
-                                                 @Param("specialite") String specialite,
-                                                 @Param("search") String search,
-                                                 Pageable pageable);
+    @Query("""
+        SELECT DISTINCT o
+        FROM Ouvrier o
+        JOIN o.affectations a
+        WHERE a.chantier.id = :chantierId
+        AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+        AND (:specialite IS NULL OR o.specialite = :specialite)
+        AND (
+            :search IS NULL
+            OR LOWER(o.firstName) LIKE LOWER(CONCAT('%', :search, '%'))
+            OR LOWER(o.lastName) LIKE LOWER(CONCAT('%', :search, '%'))
+        )
+        """)
+    Page<Ouvrier> findOuvriersByChantierWithFilters(
+            @Param("chantierId") Long chantierId,
+            @Param("specialite") String specialite,
+            @Param("search") String search,
+            Pageable pageable
+    );
+
+
+    // =========================================================
+    // RECHERCHES AVEC AFFECTATIONS
+    // =========================================================
+
+    /**
+     * Trouver un ouvrier avec ses affectations.
+     */
+    @Query("""
+        SELECT DISTINCT o
+        FROM Ouvrier o
+        LEFT JOIN FETCH o.affectations
+        WHERE o.id = :id
+        """)
+    Optional<Ouvrier> findByIdWithAffectations(
+            @Param("id") Long id
+    );
+
+
+    /**
+     * Trouver un ouvrier avec ses affectations et les chantiers.
+     */
+    @Query("""
+        SELECT DISTINCT o
+        FROM Ouvrier o
+        LEFT JOIN FETCH o.affectations a
+        LEFT JOIN FETCH a.chantier
+        WHERE o.id = :id
+        """)
+    Optional<Ouvrier> findByIdWithAll(
+            @Param("id") Long id
+    );
+
+
+    /**
+     * Trouver les ouvriers ayant une affectation en cours.
+     */
+    @Query("""
+        SELECT DISTINCT o
+        FROM Ouvrier o
+        JOIN o.affectations a
+        WHERE a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+        """)
+    List<Ouvrier> findOuvriersWithAffectationEnCours();
+
+
+    /**
+     * Trouver les ouvriers ayant une affectation en cours
+     * sur un chantier spécifique.
+     */
+    @Query("""
+        SELECT DISTINCT o
+        FROM Ouvrier o
+        JOIN o.affectations a
+        WHERE a.chantier.id = :chantierId
+        AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+        """)
+    List<Ouvrier> findOuvriersWithAffectationEnCoursByChantier(
+            @Param("chantierId") Long chantierId
+    );
+
+
+    /**
+     * Vérifier si un ouvrier possède une affectation en cours.
+     */
+    @Query("""
+        SELECT COUNT(a) > 0
+        FROM Affectation a
+        WHERE a.ouvrier.id = :ouvrierId
+        AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+        """)
+    boolean hasAffectationEnCours(
+            @Param("ouvrierId") Long ouvrierId
+    );
+
 
     // =========================================================
     // STATISTIQUES
     // =========================================================
 
     /**
-     * Compter les ouvriers par spécialité
+     * Compter les ouvriers par spécialité.
      */
-    @Query("SELECT o.specialite, COUNT(o) FROM Ouvrier o GROUP BY o.specialite")
+    @Query("""
+        SELECT o.specialite, COUNT(o)
+        FROM Ouvrier o
+        GROUP BY o.specialite
+        """)
     List<Object[]> countOuvriersBySpecialite();
 
+
     /**
-     * Compter les ouvriers actifs
+     * Compter les ouvriers actifs.
      */
-    @Query("SELECT COUNT(o) FROM Ouvrier o WHERE o.active = true")
+    @Query("""
+        SELECT COUNT(o)
+        FROM Ouvrier o
+        WHERE o.active = true
+        """)
     long countActiveOuvriers();
 
+
     /**
-     * Compter les ouvriers par statut
+     * Compter les ouvriers par statut actif/inactif.
      */
-    @Query("SELECT o.active, COUNT(o) FROM Ouvrier o GROUP BY o.active")
+    @Query("""
+        SELECT o.active, COUNT(o)
+        FROM Ouvrier o
+        GROUP BY o.active
+        """)
     List<Object[]> countOuvriersByStatus();
 
-    /**
-     * Compter les ouvriers affectés à un site
-     */
-    @Query("SELECT COUNT(DISTINCT o) FROM Ouvrier o JOIN o.affectationsSites a " +
-           "WHERE a.site.id = :siteId AND a.active = true")
-    long countOuvriersBySite(@Param("siteId") Long siteId);
+
+    // =========================================================
+    // STATISTIQUES PAR CHANTIER
+    // =========================================================
 
     /**
-     * Compter les ouvriers actifs affectés à un site
+     * Compter les ouvriers affectés à un chantier.
      */
-    @Query("SELECT COUNT(DISTINCT o) FROM Ouvrier o JOIN o.affectationsSites a " +
-           "WHERE a.site.id = :siteId AND a.active = true AND o.active = true")
-    long countActiveOuvriersBySite(@Param("siteId") Long siteId);
+    @Query("""
+        SELECT COUNT(DISTINCT o)
+        FROM Ouvrier o
+        JOIN o.affectations a
+        WHERE a.chantier.id = :chantierId
+        AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+        """)
+    long countOuvriersByChantier(
+            @Param("chantierId") Long chantierId
+    );
+
 
     /**
-     * Compter les ouvriers par spécialité sur un site
+     * Compter les ouvriers actifs affectés à un chantier.
      */
-    @Query("SELECT o.specialite, COUNT(DISTINCT o) FROM Ouvrier o JOIN o.affectationsSites a " +
-           "WHERE a.site.id = :siteId AND a.active = true GROUP BY o.specialite")
-    List<Object[]> countOuvriersBySpecialiteOnSite(@Param("siteId") Long siteId);
+    @Query("""
+        SELECT COUNT(DISTINCT o)
+        FROM Ouvrier o
+        JOIN o.affectations a
+        WHERE a.chantier.id = :chantierId
+        AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+        AND o.active = true
+        """)
+    long countActiveOuvriersByChantier(
+            @Param("chantierId") Long chantierId
+    );
+
 
     /**
-     * Trouver les 10 spécialités les plus courantes
+     * Compter les ouvriers par spécialité sur un chantier.
      */
-    @Query("SELECT o.specialite, COUNT(o) FROM Ouvrier o " +
-           "WHERE o.specialite IS NOT NULL GROUP BY o.specialite " +
-           "ORDER BY COUNT(o) DESC")
+    @Query("""
+        SELECT o.specialite, COUNT(DISTINCT o)
+        FROM Ouvrier o
+        JOIN o.affectations a
+        WHERE a.chantier.id = :chantierId
+        AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+        GROUP BY o.specialite
+        """)
+    List<Object[]> countOuvriersBySpecialiteOnChantier(
+            @Param("chantierId") Long chantierId
+    );
+
+
+    // =========================================================
+    // TOP SPÉCIALITÉS
+    // =========================================================
+
+    /**
+     * Trouver les spécialités les plus courantes.
+     */
+    @Query("""
+        SELECT o.specialite, COUNT(o)
+        FROM Ouvrier o
+        WHERE o.specialite IS NOT NULL
+        GROUP BY o.specialite
+        ORDER BY COUNT(o) DESC
+        """)
     List<Object[]> findTopSpecialites(Pageable pageable);
 }

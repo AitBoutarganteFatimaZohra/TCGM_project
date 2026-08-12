@@ -14,6 +14,7 @@ import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Mapper(componentModel = "spring")

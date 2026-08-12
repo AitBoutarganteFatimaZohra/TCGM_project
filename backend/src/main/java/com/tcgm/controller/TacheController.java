@@ -1,3 +1,4 @@
+
 package com.tcgm.controller;
 
 import com.tcgm.dto.request.TacheCreateRequest;
@@ -21,71 +22,145 @@ public class TacheController {
 
     private final TacheService tacheService;
 
+    /**
+     * Créer une tâche
+     */
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
-    public ResponseEntity<TacheResponse> createTache(@Valid @RequestBody TacheCreateRequest request) {
-        return new ResponseEntity<>(tacheService.createTache(request), HttpStatus.CREATED);
+    public ResponseEntity<TacheResponse> createTache(
+            @Valid @RequestBody TacheCreateRequest request) {
+
+        return new ResponseEntity<>(
+                tacheService.createTache(request),
+                HttpStatus.CREATED
+        );
     }
 
+    /**
+     * Récupérer une tâche par son ID
+     */
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER', 'AGENT_SAISIE')")
-    public ResponseEntity<TacheDetailResponse> getTacheById(@PathVariable Long id) {
-        return ResponseEntity.ok(tacheService.getTacheById(id));
+    public ResponseEntity<TacheDetailResponse> getTacheById(
+            @PathVariable Long id) {
+
+        return ResponseEntity.ok(
+                tacheService.getTacheById(id)
+        );
     }
 
+    /**
+     * Récupérer toutes les tâches
+     * avec filtre optionnel par Travaux
+     */
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER')")
     public ResponseEntity<Page<TacheResponse>> getAllTaches(
-            @RequestParam(required = false) Long siteId,
+            @RequestParam(required = false) Long travauxId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String search,
             Pageable pageable) {
-        return ResponseEntity.ok(tacheService.getAllTaches(siteId, status, search, pageable));
+
+        return ResponseEntity.ok(
+                tacheService.getAllTaches(
+                        travauxId,
+                        status,
+                        search,
+                        pageable
+                )
+        );
     }
 
+    /**
+     * Modifier une tâche
+     */
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
-    public ResponseEntity<TacheResponse> updateTache(@PathVariable Long id, 
-                                                      @Valid @RequestBody TacheUpdateRequest request) {
-        return ResponseEntity.ok(tacheService.updateTache(id, request));
+    public ResponseEntity<TacheResponse> updateTache(
+            @PathVariable Long id,
+            @Valid @RequestBody TacheUpdateRequest request) {
+
+        return ResponseEntity.ok(
+                tacheService.updateTache(id, request)
+        );
     }
 
+    /**
+     * Supprimer une tâche
+     */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
-    public ResponseEntity<Void> deleteTache(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteTache(
+            @PathVariable Long id) {
+
         tacheService.deleteTache(id);
+
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Modifier le statut d'une tâche
+     */
     @PatchMapping("/{id}/status")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
-    public ResponseEntity<TacheResponse> updateTacheStatus(@PathVariable Long id, 
-                                                            @RequestParam String status) {
-        return ResponseEntity.ok(tacheService.updateTacheStatus(id, status));
+    public ResponseEntity<TacheResponse> updateTacheStatus(
+            @PathVariable Long id,
+            @RequestParam String status) {
+
+        return ResponseEntity.ok(
+                tacheService.updateTacheStatus(id, status)
+        );
     }
 
+    /**
+     * Affecter un ouvrier à une tâche
+     */
     @PostMapping("/{tacheId}/ouvriers/{ouvrierId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
     public ResponseEntity<TacheDetailResponse> affecterOuvrierTache(
             @PathVariable Long tacheId,
             @PathVariable Long ouvrierId) {
-        return ResponseEntity.ok(tacheService.affecterOuvrierTache(tacheId, ouvrierId));
+
+        return ResponseEntity.ok(
+                tacheService.affecterOuvrierTache(
+                        tacheId,
+                        ouvrierId
+                )
+        );
     }
 
+    /**
+     * Retirer un ouvrier d'une tâche
+     */
     @DeleteMapping("/{tacheId}/ouvriers/{ouvrierId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
     public ResponseEntity<Void> retirerOuvrierTache(
             @PathVariable Long tacheId,
             @PathVariable Long ouvrierId) {
-        tacheService.retirerOuvrierTache(tacheId, ouvrierId);
+
+        tacheService.retirerOuvrierTache(
+                tacheId,
+                ouvrierId
+        );
+
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/site/{siteId}")
+    /**
+     * Récupérer les tâches d'un lot de travaux
+     */
+    @GetMapping("/travaux/{travauxId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER')")
-    public ResponseEntity<Page<TacheResponse>> getTachesBySite(
-            @PathVariable Long siteId,
+    public ResponseEntity<Page<TacheResponse>> getTachesByTravaux(
+            @PathVariable Long travauxId,
             Pageable pageable) {
-        return ResponseEntity.ok(tacheService.getTachesBySite(siteId, pageable));
+
+        return ResponseEntity.ok(
+                tacheService.getTachesByTravaux(
+                        travauxId,
+                        pageable
+                )
+        );
     }
 }
+

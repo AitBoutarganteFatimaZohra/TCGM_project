@@ -10,7 +10,7 @@ import com.tcgm.model.AffectationOuvrierTache;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
-
+import java.util.ArrayList;
 import java.util.List;
 
 @Mapper(componentModel = "spring")
@@ -20,16 +20,18 @@ public interface TacheMapper {
     // ENTITY → RESPONSE
     // =========================================================
 
-    @Mapping(target = "site", expression = "java(mapSiteBrief(tache))")
+    // MODIFIÉ : site → travaux
+    @Mapping(target = "site", expression = "java(mapTravauxBrief(tache))")
     @Mapping(target = "ouvriers", expression = "java(mapOuvriersBrief(tache.getAffectationsOuvriers()))")
     @Mapping(target = "totalOuvriers", expression = "java(tache.getAffectationsOuvriers() != null ? tache.getAffectationsOuvriers().size() : 0)")
     @Mapping(target = "status", source = "status")
     TacheResponse toResponse(Tache tache);
 
-    @Mapping(target = "site", expression = "java(mapSiteDetail(tache))")
+    // MODIFIÉ : site → travaux
+    @Mapping(target = "site", expression = "java(mapTravauxDetail(tache))")
     @Mapping(target = "ouvriers", expression = "java(mapOuvriersDetail(tache.getAffectationsOuvriers()))")
     @Mapping(target = "totalOuvriers", expression = "java(tache.getAffectationsOuvriers() != null ? tache.getAffectationsOuvriers().size() : 0)")
-    @Mapping(target = "totalHeures", expression = "java(0)") // À calculer si nécessaire
+    @Mapping(target = "totalHeures", expression = "java(0)")
     TacheDetailResponse toDetailResponse(Tache tache);
 
     // =========================================================
@@ -37,8 +39,9 @@ public interface TacheMapper {
     // =========================================================
 
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "site", ignore = true)
-    @Mapping(target = "status", expression = "java(com.tcgm.model.enums.StatutTache.valueOf(request.getStatus()))")  // ← CORRIGÉ
+    // MODIFIÉ : site → travaux
+    @Mapping(target = "travaux", ignore = true)
+    @Mapping(target = "status", expression = "java(com.tcgm.model.enums.StatutTache.valueOf(request.getStatus()))")
     @Mapping(target = "completedDate", ignore = true)
     @Mapping(target = "affectationsOuvriers", ignore = true)
     Tache toEntity(TacheCreateRequest request);
@@ -48,7 +51,8 @@ public interface TacheMapper {
     // =========================================================
 
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "site", ignore = true)
+    // MODIFIÉ : site → travaux
+    @Mapping(target = "travaux", ignore = true)
     @Mapping(target = "completedDate", ignore = true)
     @Mapping(target = "affectationsOuvriers", ignore = true)
     void updateEntity(@MappingTarget Tache tache, TacheUpdateRequest request);
@@ -61,15 +65,17 @@ public interface TacheMapper {
     List<TacheDetailResponse> toDetailResponseList(List<Tache> taches);
 
     // =========================================================
-    // MÉTHODES UTILITAIRES (implémentées par défaut)
+    // MÉTHODES UTILITAIRES (MODIFIÉES)
     // =========================================================
 
-    default TacheResponse.SiteBrief mapSiteBrief(Tache tache) {
-        if (tache.getSite() == null) return null;
+    // MODIFIÉ : mapSiteBrief → mapTravauxBrief
+    default TacheResponse.SiteBrief mapTravauxBrief(Tache tache) {
+        if (tache.getTravaux() == null) return null;
+        if (tache.getTravaux().getChantier() == null) return null;
         return TacheResponse.SiteBrief.builder()
-            .id(tache.getSite().getId())
-            .name(tache.getSite().getName())
-            .reference(tache.getSite().getReference())
+            .id(tache.getTravaux().getChantier().getId())
+            .name(tache.getTravaux().getChantier().getName())
+            .reference(tache.getTravaux().getChantier().getReference())
             .build();
     }
 
@@ -91,13 +97,15 @@ public interface TacheMapper {
             .collect(java.util.stream.Collectors.toList());
     }
 
-    default TacheDetailResponse.SiteBrief mapSiteDetail(Tache tache) {
-        if (tache.getSite() == null) return null;
+    // MODIFIÉ : mapSiteDetail → mapTravauxDetail
+    default TacheDetailResponse.SiteBrief mapTravauxDetail(Tache tache) {
+        if (tache.getTravaux() == null) return null;
+        if (tache.getTravaux().getChantier() == null) return null;
         return TacheDetailResponse.SiteBrief.builder()
-            .id(tache.getSite().getId())
-            .name(tache.getSite().getName())
-            .reference(tache.getSite().getReference())
-            .address(tache.getSite().getAddress())
+            .id(tache.getTravaux().getChantier().getId())
+            .name(tache.getTravaux().getChantier().getName())
+            .reference(tache.getTravaux().getChantier().getReference())
+            .address(tache.getTravaux().getChantier().getAddress())
             .build();
     }
 

@@ -9,10 +9,11 @@ import com.tcgm.exception.ResourceNotFoundException;
 import com.tcgm.mapper.OuvrierMapper;
 import com.tcgm.model.Ouvrier;
 import com.tcgm.model.Site;
-import com.tcgm.model.AffectationOuvrierSite;
+import com.tcgm.model.Affectation;  // ← NOUVEAU (remplace AffectationOuvrierSite)
+import com.tcgm.model.enums.StatutAffectation;  // ← NOUVEAU
 import com.tcgm.repository.OuvrierRepository;
 import com.tcgm.repository.SiteRepository;
-import com.tcgm.repository.AffectationOuvrierSiteRepository;
+import com.tcgm.repository.AffectationRepository;  // ← NOUVEAU (remplace AffectationOuvrierSiteRepository)
 import com.tcgm.service.OuvrierService;
 import com.tcgm.service.JournalService;
 import com.tcgm.model.enums.TypeAction;
@@ -32,7 +33,7 @@ public class OuvrierServiceImpl implements OuvrierService {
 
     private final OuvrierRepository ouvrierRepository;
     private final SiteRepository siteRepository;
-    private final AffectationOuvrierSiteRepository affectationRepository;
+    private final AffectationRepository affectationRepository;  // ← MODIFIÉ
     private final OuvrierMapper ouvrierMapper;
     private final JournalService journalService;
 
@@ -93,15 +94,17 @@ public class OuvrierServiceImpl implements OuvrierService {
     }
 
     @Override
-    public Page<OuvrierResponse> getAllOuvriers(Long siteId, String specialite, Boolean active, String search, Pageable pageable) {
+    public Page<OuvrierResponse> getAllOuvriers(Long chantierId, String specialite, Boolean active, String search, Pageable pageable) {
         log.debug("Récupération de tous les ouvriers");
 
         Page<Ouvrier> ouvriers;
-        if (siteId != null) {
+        if (chantierId != null) {
             if (search != null && !search.isEmpty() || specialite != null) {
-                ouvriers = ouvrierRepository.findOuvriersBySiteWithFilters(siteId, specialite, search, pageable);
+                // MODIFIÉ : findOuvriersBySiteWithFilters → findOuvriersByChantierWithFilters
+                ouvriers = ouvrierRepository.findOuvriersByChantierWithFilters(chantierId, specialite, search, pageable);
             } else {
-                ouvriers = ouvrierRepository.findOuvriersBySite(siteId, pageable);
+                // MODIFIÉ : findOuvriersBySite → findOuvriersByChantier
+                ouvriers = ouvrierRepository.findOuvriersByChantier(chantierId, pageable);
             }
         } else {
             ouvriers = ouvrierRepository.findOuvriersWithFilters(specialite, active, search, pageable);
@@ -143,18 +146,18 @@ public class OuvrierServiceImpl implements OuvrierService {
         Site site = siteRepository.findById(request.getSiteId())
             .orElseThrow(() -> new ResourceNotFoundException("Site", request.getSiteId()));
 
-        // Vérifier si l'ouvrier est déjà affecté à ce site
-        if (affectationRepository.isOuvrierAffectedToSite(request.getOuvrierId(), request.getSiteId())) {
-            throw new BadRequestException("Cet ouvrier est déjà affecté à ce site");
+        // MODIFIÉ : Vérifier si l'ouvrier a déjà une affectation en cours
+        if (affectationRepository.hasAffectationEnCours(request.getOuvrierId())) {
+            throw new BadRequestException("Cet ouvrier a déjà une affectation en cours");
         }
 
-        // Créer l'affectation
-        AffectationOuvrierSite affectation = AffectationOuvrierSite.builder()
+        // MODIFIÉ : Créer une Affectation (au lieu de AffectationOuvrierSite)
+        Affectation affectation = Affectation.builder()
             .ouvrier(ouvrier)
-            .site(site)
-            .startDate(request.getStartDate() != null ? LocalDate.parse(request.getStartDate()) : LocalDate.now())
-            .endDate(request.getEndDate() != null ? LocalDate.parse(request.getEndDate()) : null)
-            .active(true)
+            .chantier(site)
+            .dateDebut(request.getStartDate() != null ? LocalDate.parse(request.getStartDate()) : LocalDate.now())
+            .dateFin(request.getEndDate() != null ? LocalDate.parse(request.getEndDate()) : null)
+            .statut(StatutAffectation.EN_COURS)
             .build();
 
         affectation = affectationRepository.save(affectation);
@@ -176,11 +179,13 @@ public class OuvrierServiceImpl implements OuvrierService {
     public void desaffecterOuvrierSite(Long affectationId) {
         log.info("Désaffectation de l'ouvrier du site (ID affectation: {})", affectationId);
 
-        AffectationOuvrierSite affectation = affectationRepository.findById(affectationId)
+        // MODIFIÉ : Utiliser Affectation au lieu de AffectationOuvrierSite
+        Affectation affectation = affectationRepository.findById(affectationId)
             .orElseThrow(() -> new ResourceNotFoundException("Affectation", affectationId));
 
-        affectation.setActive(false);
-        affectation.setEndDate(LocalDate.now());
+        // MODIFIÉ : Utiliser le statut au lieu de active
+        affectation.setStatut(StatutAffectation.TERMINEE);
+        affectation.setDateFin(LocalDate.now());
         affectationRepository.save(affectation);
 
         journalService.logAction(
@@ -188,7 +193,7 @@ public class OuvrierServiceImpl implements OuvrierService {
             "OUVRIER",
             affectation.getOuvrier().getId(),
             "Désaffectation de l'ouvrier " + affectation.getOuvrier().getFirstName() + 
-            " du site " + affectation.getSite().getName(),
+            " du site " + affectation.getChantier().getName(),
             null
         );
 
@@ -196,15 +201,16 @@ public class OuvrierServiceImpl implements OuvrierService {
     }
 
     @Override
-    public Page<OuvrierResponse> getOuvriersBySite(Long siteId, Pageable pageable) {
-        log.debug("Récupération des ouvriers du site ID: {}", siteId);
+    public Page<OuvrierResponse> getOuvriersByChantier(Long chantierId, Pageable pageable) {
+        log.debug("Récupération des ouvriers du chantier ID: {}", chantierId);
 
-        // Vérifier que le site existe
-        if (!siteRepository.existsById(siteId)) {
-            throw new ResourceNotFoundException("Site", siteId);
+        // Vérifier que le chantier existe
+        if (!siteRepository.existsById(chantierId)) {
+            throw new ResourceNotFoundException("Chantier", chantierId);
         }
 
-        Page<Ouvrier> ouvriers = ouvrierRepository.findOuvriersBySite(siteId, pageable);
+        // MODIFIÉ : findOuvriersBySite → findOuvriersByChantier
+        Page<Ouvrier> ouvriers = ouvrierRepository.findOuvriersByChantier(chantierId, pageable);
         return ouvriers.map(ouvrierMapper::toResponse);
     }
 }

@@ -33,12 +33,17 @@ public class DataInitializer implements CommandLineRunner {
             log.info("Initialisation des données de base...");
             initializeRolesAndPermissions();
             createAdminUser();
+            createResponsableRHUser();
             log.info("Initialisation terminée avec succès !");
         } else {
             log.info("Les rôles existent déjà, vérification de l'utilisateur admin...");
             // Vérifier si l'admin existe, sinon le créer
             if (userRepository.findByEmail("admin@tcgm.com").isEmpty()) {
                 createAdminUser();
+            }
+            // Vérifier si le responsable RH existe, sinon le créer
+            if (userRepository.findByEmail("rh@tcgm.com").isEmpty()) {
+                createResponsableRHUser();
             }
         }
     }
@@ -98,14 +103,18 @@ public class DataInitializer implements CommandLineRunner {
         allPermissions.add(journalRead); allPermissions.add(journalExport);
         allPermissions.add(journalValidate);
 
-        // Rôle ADMIN - toutes les permissions
+        // =========================================================
+        // RÔLE ADMIN - toutes les permissions
+        // =========================================================
         Role adminRole = Role.builder()
             .name(RoleName.ADMIN)
             .description("Administrateur système - Accès complet")
             .permissions(allPermissions)
             .build();
 
-        // Rôle CHEF_PROJET
+        // =========================================================
+        // RÔLE CHEF_PROJET
+        // =========================================================
         Set<Permission> chefProjetPermissions = new HashSet<>();
         chefProjetPermissions.add(siteCreate); chefProjetPermissions.add(siteRead);
         chefProjetPermissions.add(siteUpdate);
@@ -121,7 +130,9 @@ public class DataInitializer implements CommandLineRunner {
             .permissions(chefProjetPermissions)
             .build();
 
-        // Rôle CHEF_CHANTIER
+        // =========================================================
+        // RÔLE CHEF_CHANTIER
+        // =========================================================
         Set<Permission> chefChantierPermissions = new HashSet<>();
         chefChantierPermissions.add(siteRead);
         chefChantierPermissions.add(ouvrierRead); chefChantierPermissions.add(ouvrierCreate);
@@ -137,7 +148,9 @@ public class DataInitializer implements CommandLineRunner {
             .permissions(chefChantierPermissions)
             .build();
 
-        // Rôle MAGASINIER
+        // =========================================================
+        // RÔLE MAGASINIER
+        // =========================================================
         Set<Permission> magasinierPermissions = new HashSet<>();
         magasinierPermissions.add(siteRead);
         magasinierPermissions.add(ouvrierRead);
@@ -149,7 +162,9 @@ public class DataInitializer implements CommandLineRunner {
             .permissions(magasinierPermissions)
             .build();
 
-        // Rôle AGENT_SAISIE
+        // =========================================================
+        // RÔLE AGENT_SAISIE
+        // =========================================================
         Set<Permission> agentSaisiePermissions = new HashSet<>();
         agentSaisiePermissions.add(siteRead);
         agentSaisiePermissions.add(ouvrierRead);
@@ -163,12 +178,40 @@ public class DataInitializer implements CommandLineRunner {
             .permissions(agentSaisiePermissions)
             .build();
 
-        // Sauvegarder les rôles
+        // =========================================================
+        // NOUVEAU : RÔLE RESPONSABLE_RH
+        // =========================================================
+        Set<Permission> rhPermissions = new HashSet<>();
+        // Permissions de lecture
+        rhPermissions.add(userRead);
+        rhPermissions.add(ouvrierRead);
+        rhPermissions.add(pointageRead);
+        rhPermissions.add(journalRead);
+        // Permissions d'écriture sur les ouvriers
+        rhPermissions.add(ouvrierCreate);
+        rhPermissions.add(ouvrierUpdate);
+        rhPermissions.add(ouvrierDelete);
+        // Permissions sur les utilisateurs (pour gérer les comptes)
+        rhPermissions.add(userCreate);
+        rhPermissions.add(userUpdate);
+        // Permissions sur les pointages (consultation uniquement)
+        rhPermissions.add(pointageRead);
+
+        Role rhRole = Role.builder()
+            .name(RoleName.RESPONSABLE_RH)
+            .description("Responsable RH - Gère les ouvriers et consulte les données RH")
+            .permissions(rhPermissions)
+            .build();
+
+        // =========================================================
+        // SAUVEGARDE DES RÔLES
+        // =========================================================
         roleRepository.save(adminRole);
         roleRepository.save(chefProjetRole);
         roleRepository.save(chefChantierRole);
         roleRepository.save(magasinierRole);
         roleRepository.save(agentSaisieRole);
+        roleRepository.save(rhRole);  // ← AJOUT
 
         log.info("Rôles et permissions initialisés avec succès");
     }
@@ -182,6 +225,9 @@ public class DataInitializer implements CommandLineRunner {
         );
     }
 
+    // =========================================================
+    // CRÉATION DE L'UTILISATEUR ADMIN
+    // =========================================================
     private void createAdminUser() {
         // Vérifier si l'admin existe déjà
         if (userRepository.findByEmail("admin@tcgm.com").isPresent()) {
@@ -205,10 +251,43 @@ public class DataInitializer implements CommandLineRunner {
             .lastName("TCGM")
             .phone("+212 6 00 00 00 00")
             .enabled(true)
-            .roles(roles)  // ← AJOUT DIRECT DU RÔLE DANS LE BUILDER
+            .roles(roles)
             .build();
 
         userRepository.save(admin);
         log.info("Utilisateur ADMIN créé : admin@tcgm.com / admin123");
+    }
+
+    // =========================================================
+    // NOUVEAU : CRÉATION DU RESPONSABLE RH
+    // =========================================================
+    private void createResponsableRHUser() {
+        // Vérifier si le responsable RH existe déjà
+        if (userRepository.findByEmail("rh@tcgm.com").isPresent()) {
+            log.info("L'utilisateur RESPONSABLE_RH existe déjà");
+            return;
+        }
+
+        // Récupérer le rôle RESPONSABLE_RH
+        Role rhRole = roleRepository.findByName(RoleName.RESPONSABLE_RH)
+            .orElseThrow(() -> new RuntimeException("Rôle RESPONSABLE_RH non trouvé"));
+
+        // Créer un Set avec le rôle
+        Set<Role> roles = new HashSet<>();
+        roles.add(rhRole);
+
+        // Créer l'utilisateur RH
+        User rhUser = User.builder()
+            .email("rh@tcgm.com")
+            .password(passwordEncoder.encode("rh123"))
+            .firstName("Responsable")
+            .lastName("RH")
+            .phone("+212 6 11 11 11 11")
+            .enabled(true)
+            .roles(roles)
+            .build();
+
+        userRepository.save(rhUser);
+        log.info("Utilisateur RESPONSABLE_RH créé : rh@tcgm.com / rh123");
     }
 }

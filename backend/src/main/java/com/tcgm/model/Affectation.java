@@ -1,5 +1,6 @@
 package com.tcgm.model;
 
+import com.tcgm.model.enums.StatutAffectation;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -7,25 +8,27 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "affectations_ouvrier_site")
+@Table(name = "affectations")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AffectationOuvrierSite {
+public class Affectation {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "start_date", nullable = false)
-    private LocalDate startDate;
+    @Column(name = "date_debut", nullable = false)
+    private LocalDate dateDebut;
 
-    @Column(name = "end_date")
-    private LocalDate endDate;
+    @Column(name = "date_fin")
+    private LocalDate dateFin;
 
-    private Boolean active = true;
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private StatutAffectation statut;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -37,17 +40,21 @@ public class AffectationOuvrierSite {
     // RELATIONS
     // =========================================================
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "chantier_id", nullable = false)
+    private Site chantier;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ouvrier_id", nullable = false)
     private Ouvrier ouvrier;
 
-    @ManyToOne
-    @JoinColumn(name = "site_id", nullable = false)
-    private Site site;
+    // =========================================================
+    // MÉTHODES UTILITAIRES
+    // =========================================================
 
-    // =========================================================
-    // MÉTHODES DE CYCLE DE VIE
-    // =========================================================
+    public boolean isEnCours() {
+        return statut == StatutAffectation.EN_COURS;
+    }
 
     @PrePersist
     protected void onCreate() {

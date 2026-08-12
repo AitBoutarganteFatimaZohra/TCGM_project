@@ -47,15 +47,45 @@ public class Ouvrier {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Relations
+    // =========================================================
+    // RELATIONS MODIFIÉES
+    // =========================================================
+
     @OneToMany(mappedBy = "ouvrier", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<AffectationOuvrierSite> affectationsSites = new ArrayList<>();
+    private List<Affectation> affectations = new ArrayList<>();
 
     @OneToMany(mappedBy = "ouvrier", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<AffectationOuvrierTache> affectationsTaches = new ArrayList<>();
 
     @OneToMany(mappedBy = "ouvrier", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LignePointage> pointages = new ArrayList<>();
+
+    // =========================================================
+    // RELATION À SUPPRIMER PROGRESSIVEMENT
+    // =========================================================
+
+    // @OneToMany(mappedBy = "ouvrier") private List<AffectationOuvrierSite> affectationsSites;
+
+    // =========================================================
+    // MÉTHODES UTILITAIRES
+    // =========================================================
+
+    public void addAffectation(Affectation affectation) {
+        this.affectations.add(affectation);
+        affectation.setOuvrier(this);
+    }
+
+    public void removeAffectation(Affectation affectation) {
+        this.affectations.remove(affectation);
+        affectation.setOuvrier(null);
+    }
+
+    public Affectation getAffectationEnCours() {
+        return affectations.stream()
+            .filter(Affectation::isEnCours)
+            .findFirst()
+            .orElse(null);
+    }
 
     @PrePersist
     protected void onCreate() {

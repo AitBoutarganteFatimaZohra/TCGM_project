@@ -4,7 +4,7 @@ import com.tcgm.dto.response.JournalResponse;
 import com.tcgm.model.JournalOperation;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-
+import java.util.ArrayList;
 import java.util.List;
 
 @Mapper(componentModel = "spring")
