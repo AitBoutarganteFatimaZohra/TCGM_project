@@ -32,29 +32,33 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
-            
+
             // Ajouter le filtre CORS avant tout
             .addFilterBefore(corsFilter, UsernamePasswordAuthenticationFilter.class)
-            
-            .sessionManagement(session -> 
+
+            .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            
+
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
-                    "/api/auth/**",
+                    "/api/auth/login",
+                    "/api/auth/refresh",
                     "/api/public/**",
                     "/swagger-ui/**",
-                    "/swagger-ui.html", 
+                    "/swagger-ui.html",
                     "/v3/api-docs/**",
-                    "/api-docs/**",  
+                    "/api-docs/**",
                     "/h2-console/**"
                 ).permitAll()
+                // /api/auth/register et /api/auth/logout exigent désormais
+                // un token JWT valide (register exige en plus le rôle ADMIN,
+                // vérifié via @PreAuthorize dans AuthController).
                 .anyRequest().authenticated()
             )
-            
+
             // Ajouter le filtre JWT avant le filtre d'authentification par défaut
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);  // ← CORRIGÉ
-        
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
         return http.build();
     }
 
