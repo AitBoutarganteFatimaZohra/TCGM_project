@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useChantiers from '../hooks/useChantiers';
+import LocationPicker from '../components/LocationPicker';
 
 // Le backend attend des LocalDateTime, l'input HTML une simple date.
 const toDateInputValue = (isoString) => (isoString ? isoString.slice(0, 10) : '');
@@ -19,6 +20,9 @@ const ChantierEditPage = () => {
         name: data.name || '',
         reference: data.reference || '',
         address: data.address || '',
+        description: data.description || '',
+        latitude: data.latitude ?? null,
+        longitude: data.longitude ?? null,
         status: data.status || 'PLANIFIE',
         startDate: toDateInputValue(data.startDate),
         endDate: toDateInputValue(data.endDate),
@@ -37,6 +41,10 @@ const ChantierEditPage = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleLocationChange = (lat, lng) => {
+    setForm((prev) => ({ ...prev, latitude: lat, longitude: lng }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -44,6 +52,9 @@ const ChantierEditPage = () => {
       name: form.name,
       reference: form.reference || null,
       address: form.address || null,
+      description: form.description || null,
+      latitude: form.latitude,
+      longitude: form.longitude,
       status: form.status,
       startDate: toLocalDateTime(form.startDate),
       endDate: toLocalDateTime(form.endDate),
@@ -89,6 +100,24 @@ const ChantierEditPage = () => {
           <label>Adresse</label>
           <input type="text" name="address" value={form.address} onChange={handleChange} />
         </div>
+
+        <div className="form-group">
+          <label>Description</label>
+          <textarea
+            name="description"
+            value={form.description}
+            onChange={handleChange}
+            rows={4}
+            placeholder="Détails du chantier, contraintes d'accès, particularités..."
+          />
+        </div>
+
+        <LocationPicker
+          address={form.address}
+          latitude={form.latitude}
+          longitude={form.longitude}
+          onChange={handleLocationChange}
+        />
 
         <div className="form-row">
           <div className="form-group">

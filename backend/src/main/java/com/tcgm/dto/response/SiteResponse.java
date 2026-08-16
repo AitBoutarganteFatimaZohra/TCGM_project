@@ -13,6 +13,9 @@ public class SiteResponse {
     private String name;
     private String reference;
     private String address;
+    private String description;
+    private Double latitude;
+    private Double longitude;
     private LocalDateTime startDate;
     private LocalDateTime endDate;
     private StatutSite status;

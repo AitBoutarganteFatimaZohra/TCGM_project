@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import useChantiers from '../hooks/useChantiers';
+import ChantierMap from '../components/ChantierMap';
 
 const STATUS_LABELS = {
   PLANIFIE: 'Planifié',
@@ -93,7 +94,17 @@ const ChantierDetailPage = () => {
         <p><strong>Chef de chantier:</strong> {formatUser(chantier.chefChantier)}</p>
         <p><strong>Magasinier:</strong> {formatUser(chantier.magasinier)}</p>
         <p><strong>Agent de saisie:</strong> {formatUser(chantier.agentSaisie)}</p>
+
+        {chantier.description && (
+          <>
+            <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '8px 0' }} />
+            <p style={{ marginBottom: 4 }}><strong>Description:</strong></p>
+            <p style={{ whiteSpace: 'pre-wrap', color: '#4b5563' }}>{chantier.description}</p>
+          </>
+        )}
       </div>
+
+      <ChantierMap latitude={chantier.latitude} longitude={chantier.longitude} name={chantier.name} />
 
       {chantier.taches?.length > 0 && (
         <>
