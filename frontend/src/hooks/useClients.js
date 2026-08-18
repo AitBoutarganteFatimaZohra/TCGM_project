@@ -1,11 +1,22 @@
 import { useState, useEffect } from 'react';
-import { getClients, createClient, updateClient, deleteClient, getClientById } from '../api/clientApi';
+import {
+  getClients,
+  getClientById,
+  getClientSites,
+  createClient,
+  updateClient,
+  deleteClient,
+} from '../api/clientApi';
 
+/**
+ * Hook personnalisé pour gérer les clients
+ */
 const useClients = () => {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Récupérer tous les clients
   const fetchClients = async (params = {}) => {
     setLoading(true);
     setError(null);
@@ -21,6 +32,7 @@ const useClients = () => {
     }
   };
 
+  // Récupérer un client par ID
   const fetchClientById = async (id) => {
     setLoading(true);
     setError(null);
@@ -34,12 +46,18 @@ const useClients = () => {
     }
   };
 
+  // Récupérer les sites d'un client
+  const fetchClientSites = async (id) => {
+    return await getClientSites(id);
+  };
+
+  // Créer un client
   const addClient = async (data) => {
     setLoading(true);
     setError(null);
     try {
       const newClient = await createClient(data);
-      setClients(prev => [newClient, ...prev]);
+      setClients((prev) => [newClient, ...prev]);
       return newClient;
     } catch (err) {
       setError(err.response?.data?.message || 'Erreur lors de la création du client');
@@ -49,12 +67,13 @@ const useClients = () => {
     }
   };
 
+  // Modifier un client
   const editClient = async (id, data) => {
     setLoading(true);
     setError(null);
     try {
       const updated = await updateClient(id, data);
-      setClients(prev => prev.map(c => c.id === id ? updated : c));
+      setClients((prev) => prev.map((c) => (c.id === id ? updated : c)));
       return updated;
     } catch (err) {
       setError(err.response?.data?.message || 'Erreur lors de la modification du client');
@@ -64,12 +83,13 @@ const useClients = () => {
     }
   };
 
+  // Supprimer un client
   const removeClient = async (id) => {
     setLoading(true);
     setError(null);
     try {
       await deleteClient(id);
-      setClients(prev => prev.filter(c => c.id !== id));
+      setClients((prev) => prev.filter((c) => c.id !== id));
     } catch (err) {
       setError(err.response?.data?.message || 'Erreur lors de la suppression du client');
       throw err;
@@ -78,6 +98,7 @@ const useClients = () => {
     }
   };
 
+  // Charger les clients au montage
   useEffect(() => {
     fetchClients();
   }, []);
@@ -88,6 +109,7 @@ const useClients = () => {
     error,
     fetchClients,
     fetchClientById,
+    fetchClientSites,
     addClient,
     editClient,
     removeClient,

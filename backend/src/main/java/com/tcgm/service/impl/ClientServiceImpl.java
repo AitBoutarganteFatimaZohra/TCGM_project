@@ -2,9 +2,11 @@ package com.tcgm.service.impl;
 
 import com.tcgm.dto.request.ClientRequest;
 import com.tcgm.dto.response.ClientResponse;
+import com.tcgm.dto.response.SiteResponse;
 import com.tcgm.exception.BadRequestException;
 import com.tcgm.exception.ResourceNotFoundException;
 import com.tcgm.mapper.ClientMapper;
+import com.tcgm.mapper.SiteMapper;
 import com.tcgm.model.Client;
 import com.tcgm.repository.ClientRepository;
 import com.tcgm.service.ClientService;
@@ -18,7 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +28,7 @@ public class ClientServiceImpl implements ClientService {
 
     private final ClientRepository clientRepository;
     private final ClientMapper clientMapper;
+    private final SiteMapper siteMapper;
     private final JournalService journalService;
 
     @Override
@@ -128,20 +130,12 @@ public class ClientServiceImpl implements ClientService {
     }
 
     @Override
-    public List<ClientResponse> getClientSites(Long clientId) {
+    public List<SiteResponse> getClientSites(Long clientId) {
         log.debug("Récupération des sites du client ID: {}", clientId);
 
         Client client = clientRepository.findByIdWithSites(clientId)
             .orElseThrow(() -> new ResourceNotFoundException("Client", clientId));
 
-        return client.getSites().stream()
-            .map(site -> {
-                // Créer une réponse simplifiée des sites
-                return ClientResponse.builder()
-                    .id(client.getId())
-                    .name(client.getName())
-                    .build();
-            })
-            .collect(Collectors.toList());
+        return siteMapper.toResponseList(client.getSites());
     }
 }

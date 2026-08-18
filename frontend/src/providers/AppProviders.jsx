@@ -4,6 +4,8 @@ import {
 } from '@tanstack/react-query';
 
 import { AuthProvider } from '../context/AuthContext';
+import { NotificationProvider } from '../context/NotificationContext';
+import { ThemeProvider } from '../context/ThemeContext';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,9 +20,13 @@ const queryClient = new QueryClient({
 const AppProviders = ({ children }) => {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        {children}
-      </AuthProvider>
+      <ThemeProvider>
+        <NotificationProvider>
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+        </NotificationProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 };

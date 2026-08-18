@@ -1,5 +1,15 @@
 import { useState } from 'react';
-import { getDossiersPointage, getDossierPointageById, createDossierPointage, validerDossierPointage } from '../api/pointageApi';
+import {
+  getDossiersPointage,
+  getDossierPointageById,
+  createDossierPointage,
+  updateDossierPointage,
+  deleteDossierPointage,
+  validerDossierPointage,
+  rejeterDossierPointage,
+  addLignePointage,
+  removeLignePointage,
+} from '../api/pointageApi';
 
 const usePointage = () => {
   const [dossiers, setDossiers] = useState([]);
@@ -39,10 +49,39 @@ const usePointage = () => {
     setError(null);
     try {
       const newDossier = await createDossierPointage(data);
-      setDossiers(prev => [newDossier, ...prev]);
+      setDossiers((prev) => [newDossier, ...prev]);
       return newDossier;
     } catch (err) {
       setError(err.response?.data?.message || 'Erreur lors de la création du dossier');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const editDossier = async (id, data) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const updated = await updateDossierPointage(id, data);
+      setDossiers((prev) => prev.map((d) => (d.id === id ? updated : d)));
+      return updated;
+    } catch (err) {
+      setError(err.response?.data?.message || 'Erreur lors de la modification du dossier');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeDossier = async (id) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await deleteDossierPointage(id);
+      setDossiers((prev) => prev.filter((d) => d.id !== id));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Erreur lors de la suppression du dossier');
       throw err;
     } finally {
       setLoading(false);
@@ -54,10 +93,51 @@ const usePointage = () => {
     setError(null);
     try {
       const validated = await validerDossierPointage(id, data);
-      setDossiers(prev => prev.map(d => d.id === id ? validated : d));
+      setDossiers((prev) => prev.map((d) => (d.id === id ? validated : d)));
       return validated;
     } catch (err) {
       setError(err.response?.data?.message || 'Erreur lors de la validation du dossier');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const rejectDossier = async (id, data) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const rejected = await rejeterDossierPointage(id, data);
+      setDossiers((prev) => prev.map((d) => (d.id === id ? rejected : d)));
+      return rejected;
+    } catch (err) {
+      setError(err.response?.data?.message || 'Erreur lors du rejet du dossier');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addLigne = async (dossierId, data) => {
+    setLoading(true);
+    setError(null);
+    try {
+      return await addLignePointage(dossierId, data);
+    } catch (err) {
+      setError(err.response?.data?.message || "Erreur lors de l'ajout de la ligne");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeLigne = async (ligneId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await removeLignePointage(ligneId);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Erreur lors de la suppression de la ligne');
       throw err;
     } finally {
       setLoading(false);
@@ -71,7 +151,12 @@ const usePointage = () => {
     fetchDossiers,
     fetchDossierById,
     addDossier,
+    editDossier,
+    removeDossier,
     validateDossier,
+    rejectDossier,
+    addLigne,
+    removeLigne,
   };
 };
 

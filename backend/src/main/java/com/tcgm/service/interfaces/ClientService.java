@@ -2,6 +2,7 @@ package com.tcgm.service;
 
 import com.tcgm.dto.request.ClientRequest;
 import com.tcgm.dto.response.ClientResponse;
+import com.tcgm.dto.response.SiteResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -13,5 +14,5 @@ public interface ClientService {
     ClientResponse getClientById(Long id);
     Page<ClientResponse> getAllClients(String search, Pageable pageable);
     void deleteClient(Long id);
-    List<ClientResponse> getClientSites(Long clientId);
+    List<SiteResponse> getClientSites(Long clientId);
 }
