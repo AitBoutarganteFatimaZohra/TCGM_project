@@ -8,12 +8,14 @@ import {
   Wrench,
   Pin,
   Clock,
+  Package,
   ScrollText,
   BarChart3,
   UserPlus,
 } from 'lucide-react';
 import logo from '../../assets/images/Logo_TCGM.svg';
 import useAuth from '../../hooks/useAuth';
+import { ROUTE_ACCESS } from '../../config/accessConfig';
 
 const menuItems = [
   { path: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -24,11 +26,16 @@ const menuItems = [
   { path: '/travaux', label: 'Travaux', Icon: Wrench },
   { path: '/affectations', label: 'Affectations', Icon: Pin },
   { path: '/pointage', label: 'Pointage', Icon: Clock },
+  // 🔧 CORRIGÉ : entrée manquante — sans elle, même un rôle autorisé
+  // dans ROUTE_ACCESS ne voyait jamais le lien (rien à filtrer).
+  // Ajoutée ici pour Chef de Chantier (voir accessConfig.js pour
+  // la liste complète des rôles autorisés sur /ressources).
+  { path: '/ressources', label: 'Ressources', Icon: Package },
   { path: '/journal', label: 'Journal', Icon: ScrollText },
+  { path: '/mon-journal-agent', label: 'Mon journal', Icon: ScrollText },
   { path: '/statistiques', label: 'Statistiques', Icon: BarChart3 },
 ];
 
-// Réservé à l'Admin : création de comptes (voir cahier des charges §6.1)
 const adminItem = {
   path: '/utilisateurs/nouveau',
   label: 'Utilisateurs',
@@ -37,7 +44,14 @@ const adminItem = {
 
 const Sidebar = () => {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'ADMIN';
+  const role = user?.role;
+
+  const visibleItems = menuItems.filter((item) => {
+    const allowed = ROUTE_ACCESS[item.path];
+    return allowed ? allowed.includes(role) : true;
+  });
+
+  const isAdmin = role === 'ADMIN';
 
   return (
     <aside className="sidebar">
@@ -46,7 +60,7 @@ const Sidebar = () => {
       </div>
 
       <nav className="sidebar__nav" aria-label="Navigation principale">
-        {menuItems.map(({ path, label, Icon }) => (
+        {visibleItems.map(({ path, label, Icon }) => (
           <NavLink
             key={path}
             to={path}

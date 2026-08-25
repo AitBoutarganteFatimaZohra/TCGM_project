@@ -46,6 +46,25 @@ public interface TacheRepository extends JpaRepository<Tache, Long> {
     List<Tache> findTachesByTravauxWithOuvriers(@Param("travauxId") Long travauxId);
 
     // =========================================================
+    // ⚠️ CORRECTIF : RECHERCHES PAR SITE/CHANTIER (via travaux.chantier.id)
+    // Un site peut avoir PLUSIEURS Travaux, il ne faut donc jamais
+    // supposer que travauxId == siteId. Ces méthodes remontent la
+    // relation Tache -> Travaux -> Site correctement.
+    // =========================================================
+
+    @Query("SELECT COUNT(t) FROM Tache t WHERE t.travaux.chantier.id = :siteId")
+    long countByChantierId(@Param("siteId") Long siteId);
+
+    @Query("SELECT COUNT(t) FROM Tache t WHERE t.travaux.chantier.id = :siteId AND t.status = 'TERMINEE'")
+    long countCompletedTachesByChantier(@Param("siteId") Long siteId);
+
+    @Query("SELECT t.status, COUNT(t) FROM Tache t WHERE t.travaux.chantier.id = :siteId GROUP BY t.status")
+    List<Object[]> countTachesByStatusForChantier(@Param("siteId") Long siteId);
+
+    @Query("SELECT t FROM Tache t WHERE t.travaux.chantier.id = :siteId")
+    List<Tache> findAllByChantierId(@Param("siteId") Long siteId);
+
+    // =========================================================
     // RECHERCHES AVEC FILTRES
     // =========================================================
 

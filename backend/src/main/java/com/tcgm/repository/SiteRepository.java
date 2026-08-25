@@ -21,62 +21,32 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
     // RECHERCHES DE BASE
     // =========================================================
 
-    /**
-     * Trouver les sites par statut
-     */
     Page<Site> findByStatus(StatutSite status, Pageable pageable);
 
-    /**
-     * Trouver les sites par client
-     */
     Page<Site> findByClientId(Long clientId, Pageable pageable);
 
-    /**
-     * Trouver les sites par statut et client
-     */
     Page<Site> findByStatusAndClientId(StatutSite status, Long clientId, Pageable pageable);
 
-    /**
-     * Trouver un site par sa référence
-     */
     Optional<Site> findByReference(String reference);
 
-    /**
-     * Vérifier si une référence existe
-     */
     boolean existsByReference(String reference);
 
     // =========================================================
     // RECHERCHES PAR RESPONSABLE
     // =========================================================
 
-    /**
-     * Trouver les sites dont l'utilisateur est chef de projet
-     */
     @Query("SELECT s FROM Site s WHERE s.chefProjet.id = :userId")
     List<Site> findByChefProjetId(@Param("userId") Long userId);
 
-    /**
-     * Trouver les sites dont l'utilisateur est chef de chantier
-     */
     @Query("SELECT s FROM Site s WHERE s.chefChantier.id = :userId")
     List<Site> findByChefChantierId(@Param("userId") Long userId);
 
-    /**
-     * Trouver les sites dont l'utilisateur est magasinier
-     */
     @Query("SELECT s FROM Site s WHERE s.magasinier.id = :userId")
     List<Site> findByMagasinierId(@Param("userId") Long userId);
 
-    /**
-     * Trouver les sites dont l'utilisateur est agent de saisie
-     */
     @Query("SELECT s FROM Site s WHERE s.agentSaisie.id = :userId")
     List<Site> findByAgentSaisieId(@Param("userId") Long userId);
 
-    /**
-     * Trouver les sites où l'utilisateur a un rôle (projet, chantier, magasinier, saisie)
-     */
     @Query("SELECT DISTINCT s FROM Site s WHERE s.chefProjet.id = :userId " +
            "OR s.chefChantier.id = :userId " +
            "OR s.magasinier.id = :userId " +
@@ -84,27 +54,38 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
     List<Site> findSitesByUserId(@Param("userId") Long userId);
 
     // =========================================================
+    // RECHERCHES DE BASE AVEC ID UNIQUEMENT (pour les selects)
+    // =========================================================
+
+    @Query("SELECT s.id FROM Site s WHERE s.chefChantier.id = :userId")
+    List<Long> findIdsByChefChantierId(@Param("userId") Long userId);
+
+    /**
+     * Trouver les IDs des sites dont l'utilisateur est agent de saisie.
+     * 🔧 CORRIGÉ : remplacé par une @Query explicite avec projection s.id.
+     * L'ancienne version en requête dérivée par nom de méthode
+     * (`List<Long> findIdsByAgentSaisieId(Long)`) était mal interprétée
+     * par Spring Data / Hibernate, qui retournait des entités Site
+     * complètes au lieu de Long → QueryTypeMismatchException ("Result
+     * type is 'Long' but the query returned a 'Site'") → 500 sur
+     * /api/statistiques/dashboard pour le rôle AGENT_SAISIE.
+     */
+    @Query("SELECT s.id FROM Site s WHERE s.agentSaisie.id = :agentSaisieId")
+    List<Long> findIdsByAgentSaisieId(@Param("agentSaisieId") Long agentSaisieId);
+
+    // =========================================================
     // RECHERCHES AVEC PÉRIODE
     // =========================================================
 
-    /**
-     * Trouver les sites avec des dates de début/fin dans une période
-     */
     @Query("SELECT s FROM Site s WHERE s.startDate BETWEEN :start AND :end " +
            "OR s.endDate BETWEEN :start AND :end")
     List<Site> findSitesInPeriod(@Param("start") LocalDateTime start, 
                                  @Param("end") LocalDateTime end);
 
-    /**
-     * Trouver les sites qui se terminent bientôt (dans les 7 jours)
-     */
     @Query("SELECT s FROM Site s WHERE s.endDate BETWEEN :today AND :soon")
     List<Site> findSitesEndingSoon(@Param("today") LocalDateTime today, 
                                    @Param("soon") LocalDateTime soon);
 
-    /**
-     * Trouver les sites en cours
-     */
     @Query("SELECT s FROM Site s WHERE s.status = 'EN_COURS'")
     List<Site> findActiveSites();
 
@@ -112,21 +93,12 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
     // STATISTIQUES
     // =========================================================
 
-    /**
-     * Compter les sites par statut
-     */
     @Query("SELECT s.status, COUNT(s) FROM Site s GROUP BY s.status")
     List<Object[]> countSitesByStatus();
 
-    /**
-     * Compter les sites par client
-     */
     @Query("SELECT c.name, COUNT(s) FROM Site s JOIN s.client c GROUP BY c.id, c.name")
     List<Object[]> countSitesByClient();
 
-    /**
-     * Compter le nombre total de sites par statut
-     */
     @Query("SELECT COUNT(s) FROM Site s WHERE s.status = :status")
     Long countByStatus(@Param("status") StatutSite status);
 
@@ -134,26 +106,28 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
     // RECHERCHES AVANCÉES
     // =========================================================
 
-    /**
-     * Recherche de sites avec filtres multiples
-     */
     @Query("SELECT s FROM Site s WHERE " +
            "(:status IS NULL OR s.status = :status) AND " +
            "(:clientId IS NULL OR s.client.id = :clientId) AND " +
            "(:search IS NULL OR LOWER(s.name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(s.reference) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "OR LOWER(s.reference) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
+           "(:periodStart IS NULL OR s.endDate IS NULL OR s.endDate >= :periodStart) AND " +
+           "(:periodEnd IS NULL OR s.startDate IS NULL OR s.startDate <= :periodEnd) AND " +
+           "(:responsableId IS NULL OR " +
+           "(s.chefProjet.id = :responsableId OR s.chefChantier.id = :responsableId " +
+           "OR s.magasinier.id = :responsableId OR s.agentSaisie.id = :responsableId))")
     Page<Site> findSitesWithFilters(@Param("status") StatutSite status,
                                     @Param("clientId") Long clientId,
                                     @Param("search") String search,
+                                    @Param("periodStart") LocalDateTime periodStart,
+                                    @Param("periodEnd") LocalDateTime periodEnd,
+                                    @Param("responsableId") Long responsableId,
                                     Pageable pageable);
 
     // =========================================================
     // NOUVELLES MÉTHODES POUR TRAVAUX ET AFFECTATION
     // =========================================================
 
-    /**
-     * Trouver les sites avec leurs relations (fetch eager) - Version complète
-     */
     @Query("SELECT s FROM Site s LEFT JOIN FETCH s.client " +
            "LEFT JOIN FETCH s.chefProjet " +
            "LEFT JOIN FETCH s.magasinier " +
@@ -162,27 +136,15 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
            "WHERE s.id = :id")
     Optional<Site> findByIdWithRelations(@Param("id") Long id);
 
-    /**
-     * Trouver un site avec ses travaux (NOUVEAU)
-     */
     @Query("SELECT s FROM Site s LEFT JOIN FETCH s.travaux WHERE s.id = :id")
     Optional<Site> findByIdWithTravaux(@Param("id") Long id);
 
-    /**
-     * Trouver un site avec ses affectations (NOUVEAU)
-     */
     @Query("SELECT s FROM Site s LEFT JOIN FETCH s.affectations WHERE s.id = :id")
     Optional<Site> findByIdWithAffectations(@Param("id") Long id);
 
-    /**
-     * Trouver un site avec toutes ses relations (travaux + taches) (NOUVEAU)
-     */
     @Query("SELECT s FROM Site s LEFT JOIN FETCH s.travaux t LEFT JOIN FETCH t.taches WHERE s.id = :id")
     Optional<Site> findByIdWithAllRelations(@Param("id") Long id);
 
-    /**
-     * Trouver un site avec toutes ses relations (travaux, taches, affectations) (NOUVEAU)
-     */
     @Query("SELECT s FROM Site s " +
            "LEFT JOIN FETCH s.travaux t " +
            "LEFT JOIN FETCH t.taches " +
@@ -191,9 +153,7 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
            "WHERE s.id = :id")
     Optional<Site> findByIdWithAll(@Param("id") Long id);
 
-    /**
-     * Trouver les sites avec leurs travaux et tâches (NOUVEAU)
-     */
     @Query("SELECT DISTINCT s FROM Site s LEFT JOIN FETCH s.travaux t LEFT JOIN FETCH t.taches")
     List<Site> findAllWithTravauxAndTaches();
+
 }

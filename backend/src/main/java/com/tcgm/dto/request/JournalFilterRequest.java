@@ -14,4 +14,5 @@ public class JournalFilterRequest {
     private String startDate;    // Format: yyyy-MM-dd
     private String endDate;      // Format: yyyy-MM-dd
     private String search;       // Recherche textuelle
+    private Long siteId;
 }

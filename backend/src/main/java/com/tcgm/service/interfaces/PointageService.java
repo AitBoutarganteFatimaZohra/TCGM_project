@@ -18,6 +18,7 @@ public interface PointageService {
     void deleteDossierPointage(Long id);
     LignePointageResponse addLignePointage(Long dossierId, LignePointageRequest request);
     void removeLignePointage(Long ligneId);
+    DossierPointageResponse soumettreDossierPointage(Long id);
     DossierPointageResponse validerDossierPointage(Long id, ValidationPointageRequest request);
     DossierPointageResponse rejeterDossierPointage(Long id, ValidationPointageRequest request);
     DossierPointageResponse getTodayPointage(Long siteId);

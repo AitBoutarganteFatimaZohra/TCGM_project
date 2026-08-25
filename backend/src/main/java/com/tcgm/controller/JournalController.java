@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -18,7 +19,7 @@ public class JournalController {
     private final JournalService journalService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER', 'AGENT_SAISIE')")
     public ResponseEntity<Page<JournalResponse>> getJournalEntries(
             @RequestParam(required = false) String actionType,
             @RequestParam(required = false) String entityType,
@@ -27,6 +28,7 @@ public class JournalController {
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) Long siteId,
             Pageable pageable) {
         JournalFilterRequest filter = JournalFilterRequest.builder()
             .actionType(actionType)
@@ -36,6 +38,7 @@ public class JournalController {
             .startDate(startDate)
             .endDate(endDate)
             .search(search)
+            .siteId(siteId)
             .build();
         return ResponseEntity.ok(journalService.getJournalEntries(filter, pageable));
     }
@@ -46,14 +49,35 @@ public class JournalController {
         return ResponseEntity.ok(journalService.getJournalEntryById(id));
     }
 
+    // 🔧 CORRIGÉ : CHEF_CHANTIER ajouté — il valide/rejette les actions du
+    // Magasinier et de l'Agent de Saisie dans son périmètre.
+    @PutMapping("/{id}/validate")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
+    public ResponseEntity<JournalResponse> validateJournalEntry(
+            @PathVariable Long id,
+            Authentication authentication) {
+        return ResponseEntity.ok(journalService.validateEntry(id, authentication.getName()));
+    }
+
+    @PutMapping("/{id}/reject")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
+    public ResponseEntity<JournalResponse> rejectJournalEntry(
+            @PathVariable Long id,
+            Authentication authentication) {
+        return ResponseEntity.ok(journalService.rejectEntry(id, authentication.getName()));
+    }
+
+    // 🔧 CORRIGÉ : CHEF_CHANTIER ajouté — cohérent avec son accès désormais
+    // ouvert à /journal (voir accessConfig.js).
     @GetMapping("/export")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER', 'AGENT_SAISIE')")
     public ResponseEntity<?> exportJournal(
             @RequestParam String format,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
-            @RequestParam(required = false) String entityType) {
-        return journalService.exportJournal(format, startDate, endDate, entityType);
+            @RequestParam(required = false) String entityType,
+            @RequestParam(required = false) Long siteId) {
+        return journalService.exportJournal(format, startDate, endDate, entityType, siteId);
     }
 
     @GetMapping("/statistiques")

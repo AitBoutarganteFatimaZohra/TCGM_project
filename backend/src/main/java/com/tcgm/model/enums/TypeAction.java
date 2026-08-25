@@ -4,6 +4,7 @@ public enum TypeAction {
     CREATION,
     MODIFICATION,
     SUPPRESSION,
+    SOUMISSION,
     VALIDATION,
     REJET,
     CONNEXION,

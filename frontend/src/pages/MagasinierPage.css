@@ -1,0 +1,150 @@
+/* ==========================================================
+   INTERFACES MAGASINIER — AJOUTS CSS
+   À coller à la fin de ton index.css existant
+   ========================================================== */
+
+/* ---- Équipe sur site (Dashboard) ---- */
+.chart-card--scroll {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.worker-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--tcgm-gray-lighter);
+}
+
+.worker-row:last-child {
+  border-bottom: none;
+}
+
+.worker-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--tcgm-terracotta-bg);
+  color: var(--tcgm-terracotta);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 12px;
+  flex-shrink: 0;
+  border: 1px solid var(--tcgm-terracotta-border);
+}
+
+.worker-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.worker-name {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--tcgm-black);
+}
+
+.worker-cin {
+  font-size: 11.5px;
+  color: var(--tcgm-gray);
+}
+
+/* ---- KPI icônes colorées selon le statut ---- */
+.stat-card__icon--success {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.stat-card__icon--info {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.stat-card__icon--danger {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+/* ---- Profil : avatar large en en-tête ---- */
+.profile-avatar-lg {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--tcgm-terracotta);
+  color: var(--tcgm-white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 20px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow);
+}
+
+/* ==========================================================
+   GABARIT GÉNÉRIQUE POUR LES VUES LECTURE SEULE
+   (à utiliser sur les pages Journal / Tâches en lecture seule
+   du Magasinier — dès que tu me colles leur code je les
+   réhabille précisément, mais ces classes sont déjà prêtes)
+   ========================================================== */
+
+/* Bandeau "lecture seule" optionnel en haut d'une page consultation */
+.readonly-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--tcgm-gray-lighter);
+  color: var(--tcgm-gray-600);
+  border: 1px solid var(--tcgm-gray-light);
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+/* Badge priorité (à utiliser sur la colonne PRIORITÉ des tâches) */
+.badge-priorite {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.badge-priorite--1 {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.badge-priorite--2 {
+  background: #fef9c3;
+  color: #a16207;
+}
+
+.badge-priorite--3 {
+  background: var(--tcgm-gray-lighter);
+  color: var(--tcgm-gray);
+}
+
+/* Empty state compact pour listes lecture seule (journal, tâches) */
+.empty-state--compact {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--tcgm-gray);
+  background: var(--tcgm-white);
+  border: 1px dashed var(--tcgm-gray-light);
+  border-radius: var(--radius);
+  font-size: 13.5px;
+}
+
+.empty-state--compact .empty-state__icon {
+  font-size: 28px;
+  display: block;
+  margin-bottom: 10px;
+  opacity: 0.6;
+}

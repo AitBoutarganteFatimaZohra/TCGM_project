@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import useTaches from '../hooks/useTaches';
-import { updateTacheStatus, retirerOuvrier } from '../api/tacheApi';
+// ⚠️ Adaptez ce chemin/nom si votre hook d'authentification s'appelle
+// différemment dans le projet (ex: '../context/AuthContext', '../hooks/useAuth'...).
+// Il doit exposer l'utilisateur connecté avec sa propriété `role`
+// (ex: 'ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', ...), comme dans PointageDetailPage.
+import useAuth from '../hooks/useAuth';
+import { updateTacheStatus, retirerOuvrier, soumettreTache, validerTache, rejeterTache } from '../api/tacheApi';
 
 const STATUTS = [
   { value: 'PLANIFIEE', label: 'Planifiée' },
@@ -15,9 +20,16 @@ const getStatutBadgeClass = (status) => {
       return 'badge--success';
     case 'EN_COURS':
       return 'badge--warning';
+    case 'EN_ATTENTE_VALIDATION':
+      return 'badge--pending';
     default:
       return 'badge--info';
   }
+};
+
+const getStatutLabel = (status) => {
+  if (status === 'EN_ATTENTE_VALIDATION') return 'En attente de validation';
+  return STATUTS.find((s) => s.value === status)?.label || status || '—';
 };
 
 const formatDateTime = (dateStr) => {
@@ -35,10 +47,17 @@ const TacheDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { fetchTacheById, removeTache, loading, error } = useTaches();
+  const { user } = useAuth();
+  const role = user?.role;
 
   const [tache, setTache] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
+
+  // Formulaire de soumission (Chef de Chantier)
+  const [showSoumettreForm, setShowSoumettreForm] = useState(false);
+  const [proposedStatus, setProposedStatus] = useState('');
+  const [proposedPlannedDate, setProposedPlannedDate] = useState('');
 
   const loadTache = async () => {
     try {
@@ -53,6 +72,7 @@ const TacheDetailPage = () => {
     loadTache();
   }, [id]);
 
+  // Override direct — Admin uniquement
   const handleStatusChange = async (newStatus) => {
     setStatusUpdating(true);
     try {
@@ -60,6 +80,59 @@ const TacheDetailPage = () => {
       await loadTache();
     } catch (err) {
       alert('Erreur lors du changement de statut');
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  // Étape 1 — Chef de Chantier soumet un changement pour validation
+  const handleSoumettre = async (e) => {
+    e.preventDefault();
+    if (!proposedStatus && !proposedPlannedDate) {
+      alert('Indiquez un nouveau statut et/ou une nouvelle date prévue');
+      return;
+    }
+    setStatusUpdating(true);
+    try {
+      await soumettreTache(id, {
+        proposedStatus: proposedStatus || undefined,
+        proposedPlannedDate: proposedPlannedDate || undefined,
+      });
+      setShowSoumettreForm(false);
+      setProposedStatus('');
+      setProposedPlannedDate('');
+      await loadTache();
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Erreur lors de la soumission');
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  // Étape 2a — Chef de Projet valide
+  const handleValider = async () => {
+    if (!window.confirm('Valider cette demande de changement ?')) return;
+    setStatusUpdating(true);
+    try {
+      await validerTache(id);
+      await loadTache();
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Erreur lors de la validation');
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  // Étape 2b — Chef de Projet rejette
+  const handleRejeter = async () => {
+    const motif = window.prompt('Motif du rejet (optionnel) :', '');
+    if (motif === null) return; // annulé
+    setStatusUpdating(true);
+    try {
+      await rejeterTache(id, motif);
+      await loadTache();
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Erreur lors du rejet');
     } finally {
       setStatusUpdating(false);
     }
@@ -104,13 +177,18 @@ const TacheDetailPage = () => {
 
   if (!tache) return null;
 
+  const isPending = tache.status === 'EN_ATTENTE_VALIDATION';
+  const canSoumettre = (role === 'CHEF_CHANTIER' || role === 'ADMIN') && !isPending;
+  const canValiderOuRejeter = (role === 'CHEF_PROJET' || role === 'ADMIN') && isPending;
+  const canOverrideAdmin = role === 'ADMIN' && !isPending;
+
   return (
     <div className="tache-detail-page">
       <div className="page-header">
         <h1>
           ✅ {tache.title}
           <span className={`badge ${getStatutBadgeClass(tache.status)}`} style={{ marginLeft: 12 }}>
-            {STATUTS.find((s) => s.value === tache.status)?.label || tache.status}
+            {getStatutLabel(tache.status)}
           </span>
         </h1>
         <div className="header-actions">
@@ -127,6 +205,24 @@ const TacheDetailPage = () => {
       </div>
 
       {error && <div className="error-banner">❌ {error}</div>}
+
+      {isPending && (
+        <div className="info-banner">
+          ⏳ Cette tâche a une demande de changement en attente de validation par le Chef de Projet.
+          {tache.proposedStatus && (
+            <> Nouveau statut proposé : <strong>{getStatutLabel(tache.proposedStatus)}</strong>.</>
+          )}
+          {tache.proposedPlannedDate && (
+            <> Nouvelle date proposée : <strong>{formatDateTime(tache.proposedPlannedDate)}</strong>.</>
+          )}
+        </div>
+      )}
+
+      {!isPending && tache.rejectionReason && (
+        <div className="error-banner">
+          ⚠️ Dernière demande rejetée. Motif : {tache.rejectionReason}
+        </div>
+      )}
 
       <div className="detail-grid">
         <div className="detail-card">
@@ -164,20 +260,114 @@ const TacheDetailPage = () => {
         </div>
 
         <div className="detail-card">
-          <h2>Statut</h2>
-          <div className="status-actions">
-            {STATUTS.map((s) => (
+          <h2>Statut &amp; validation</h2>
+
+          {/* Override direct — Admin uniquement */}
+          {canOverrideAdmin && (
+            <>
+              <p className="cell-subtext">Changement direct (Administrateur) :</p>
+              <div className="status-actions">
+                {STATUTS.map((s) => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    className={`btn-status ${tache.status === s.value ? 'btn-status--active' : ''}`}
+                    disabled={statusUpdating || tache.status === s.value}
+                    onClick={() => handleStatusChange(s.value)}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Étape 1 — Chef de Chantier */}
+          {canSoumettre && role === 'CHEF_CHANTIER' && (
+            <>
+              {!showSoumettreForm ? (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    setProposedStatus(tache.status);
+                    setShowSoumettreForm(true);
+                  }}
+                >
+                  Soumettre un changement pour validation
+                </button>
+              ) : (
+                <form className="form-card" onSubmit={handleSoumettre}>
+                  <div className="form-group">
+                    <label className="form-label">Nouveau statut</label>
+                    <select
+                      className="form-select"
+                      value={proposedStatus}
+                      onChange={(e) => setProposedStatus(e.target.value)}
+                    >
+                      <option value="">— Ne pas changer —</option>
+                      {STATUTS.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Nouvelle date prévue</label>
+                    <input
+                      type="datetime-local"
+                      className="form-input"
+                      value={proposedPlannedDate}
+                      onChange={(e) => setProposedPlannedDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setShowSoumettreForm(false)}
+                    >
+                      Annuler
+                    </button>
+                    <button type="submit" className="btn-primary" disabled={statusUpdating}>
+                      {statusUpdating ? 'Envoi...' : 'Soumettre pour validation'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </>
+          )}
+
+          {/* Étape 2 — Chef de Projet */}
+          {canValiderOuRejeter && (
+            <div className="status-actions">
               <button
-                key={s.value}
                 type="button"
-                className={`btn-status ${tache.status === s.value ? 'btn-status--active' : ''}`}
-                disabled={statusUpdating || tache.status === s.value}
-                onClick={() => handleStatusChange(s.value)}
+                className="btn-primary"
+                disabled={statusUpdating}
+                onClick={handleValider}
               >
-                {s.label}
+                ✔ Valider
               </button>
-            ))}
-          </div>
+              <button
+                type="button"
+                className="btn-danger"
+                disabled={statusUpdating}
+                onClick={handleRejeter}
+              >
+                ✘ Rejeter
+              </button>
+            </div>
+          )}
+
+          {!canOverrideAdmin && !canSoumettre && !canValiderOuRejeter && (
+            <p className="empty-inline">
+              {isPending
+                ? 'En attente de la décision du Chef de Projet.'
+                : 'Vous n\'avez pas de statut à faire évoluer sur cette tâche.'}
+            </p>
+          )}
         </div>
 
         <div className="detail-card detail-card--full">

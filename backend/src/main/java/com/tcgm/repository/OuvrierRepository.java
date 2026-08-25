@@ -329,4 +329,38 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
         ORDER BY COUNT(o) DESC
         """)
     List<Object[]> findTopSpecialites(Pageable pageable);
+
+
+
+    @Query("""
+    SELECT DISTINCT o
+    FROM Ouvrier o
+    JOIN o.affectations a
+    WHERE a.chantier.id IN :chantierIds
+    AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+    """)
+Page<Ouvrier> findOuvriersByChantierIn(
+        @Param("chantierIds") List<Long> chantierIds,
+        Pageable pageable
+);
+
+@Query("""
+    SELECT DISTINCT o
+    FROM Ouvrier o
+    JOIN o.affectations a
+    WHERE a.chantier.id IN :chantierIds
+    AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+    AND (:specialite IS NULL OR o.specialite = :specialite)
+    AND (
+        :search IS NULL
+        OR LOWER(o.firstName) LIKE LOWER(CONCAT('%', :search, '%'))
+        OR LOWER(o.lastName) LIKE LOWER(CONCAT('%', :search, '%'))
+    )
+    """)
+Page<Ouvrier> findOuvriersByChantierInWithFilters(
+        @Param("chantierIds") List<Long> chantierIds,
+        @Param("specialite") String specialite,
+        @Param("search") String search,
+        Pageable pageable
+);
 }

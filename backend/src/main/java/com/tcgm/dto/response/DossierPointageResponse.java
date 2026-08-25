@@ -19,7 +19,7 @@ public class DossierPointageResponse {
     private LocalDateTime validatedAt;
     private List<LignePointageResponse> lignes;
     private Integer totalOuvriers;
-    private Integer totalHeures;
+    private Double totalHeures;
     private String notes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

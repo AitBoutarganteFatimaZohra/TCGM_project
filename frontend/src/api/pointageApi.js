@@ -1,9 +1,5 @@
 import axiosInstance from './axiosConfig';
 
-// =============================================================
-// POINTAGE — DOSSIERS
-// =============================================================
-
 export const getDossiersPointage = async (params = {}) => {
   const response = await axiosInstance.get('/pointage/dossiers', { params });
   return response.data;
@@ -29,6 +25,12 @@ export const deleteDossierPointage = async (id) => {
   return response.data;
 };
 
+// ✅ NOUVEAU
+export const soumettreDossierPointage = async (id) => {
+  const response = await axiosInstance.post(`/pointage/dossiers/${id}/soumettre`);
+  return response.data;
+};
+
 export const validerDossierPointage = async (id, data) => {
   const response = await axiosInstance.post(`/pointage/dossiers/${id}/valider`, data);
   return response.data;
@@ -48,10 +50,6 @@ export const getPointageStatistiques = async (siteId) => {
   const response = await axiosInstance.get(`/pointage/statistiques/site/${siteId}`);
   return response.data;
 };
-
-// =============================================================
-// POINTAGE — LIGNES
-// =============================================================
 
 export const addLignePointage = async (dossierId, data) => {
   const response = await axiosInstance.post(`/pointage/dossiers/${dossierId}/lignes`, data);

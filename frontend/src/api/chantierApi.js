@@ -48,3 +48,14 @@ export const deleteChantier = async (id) => {
   const response = await axiosInstance.delete(`/sites/${id}`);
   return response.data;
 };
+
+/**
+ * Récupérer les sites de l'utilisateur connecté (quel que soit son rôle :
+ * chef de projet, chef de chantier, magasinier, agent de saisie).
+ * Renvoie une Page Spring Data -> response.data.content est le tableau.
+ * GET /api/sites/my-sites
+ */
+export const getMySites = async (params = {}) => {
+  const response = await axiosInstance.get('/sites/my-sites', { params });
+  return response.data;
+};

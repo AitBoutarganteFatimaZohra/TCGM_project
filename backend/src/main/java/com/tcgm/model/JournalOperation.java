@@ -1,5 +1,6 @@
 package com.tcgm.model;
 
+import com.tcgm.model.enums.StatutValidation;
 import com.tcgm.model.enums.TypeAction;
 import jakarta.persistence.*;
 import lombok.*;
@@ -38,6 +39,22 @@ public class JournalOperation {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    // =========================================================
+    // VALIDATION (cahier des charges §6.7)
+    // =========================================================
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    @Builder.Default
+    private StatutValidation status = StatutValidation.EN_ATTENTE;
+
+    @ManyToOne
+    @JoinColumn(name = "validated_by")
+    private User validatedBy;
+
+    @Column(name = "validated_at")
+    private LocalDateTime validatedAt;
+
     // Relations
     @ManyToOne
     @JoinColumn(name = "user_id")
@@ -46,5 +63,8 @@ public class JournalOperation {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        if (status == null) {
+            status = StatutValidation.EN_ATTENTE;
+        }
     }
 }

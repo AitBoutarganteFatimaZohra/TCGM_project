@@ -20,12 +20,15 @@ import com.tcgm.model.enums.TypeAction;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -44,26 +47,21 @@ public class SiteServiceImpl implements SiteService {
     public SiteResponse createSite(SiteCreateRequest request) {
         log.info("Création d'un nouveau site: {}", request.getName());
 
-        // Vérifier si la référence existe déjà
-        if (request.getReference() != null && 
+        if (request.getReference() != null &&
             siteRepository.existsByReference(request.getReference())) {
             throw new BadRequestException("Cette référence de site existe déjà");
         }
 
-        // Vérifier que le client existe
         Client client = clientRepository.findById(request.getClientId())
             .orElseThrow(() -> new ResourceNotFoundException("Client", request.getClientId()));
 
-        // Vérifier que le chef de projet existe
         User chefProjet = userRepository.findById(request.getChefProjetId())
             .orElseThrow(() -> new ResourceNotFoundException("Chef de projet", request.getChefProjetId()));
 
-        // Créer le site
         Site site = siteMapper.toEntity(request);
         site.setClient(client);
         site.setChefProjet(chefProjet);
 
-        // Ajouter les autres responsables si présents
         if (request.getMagasinierId() != null) {
             User magasinier = userRepository.findById(request.getMagasinierId())
                 .orElseThrow(() -> new ResourceNotFoundException("Magasinier", request.getMagasinierId()));
@@ -104,14 +102,12 @@ public class SiteServiceImpl implements SiteService {
         Site site = siteRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Site", id));
 
-        // Vérifier si la référence n'est pas déjà prise
-        if (request.getReference() != null && 
+        if (request.getReference() != null &&
             !site.getReference().equals(request.getReference()) &&
             siteRepository.existsByReference(request.getReference())) {
             throw new BadRequestException("Cette référence de site existe déjà");
         }
 
-        // Mettre à jour les relations si nécessaire
         if (request.getClientId() != null) {
             Client client = clientRepository.findById(request.getClientId())
                 .orElseThrow(() -> new ResourceNotFoundException("Client", request.getClientId()));
@@ -166,9 +162,11 @@ public class SiteServiceImpl implements SiteService {
     }
 
     @Override
-    public Page<SiteResponse> getAllSites(String status, Long clientId, String search, Pageable pageable) {
+    public Page<SiteResponse> getAllSites(String status, Long clientId, String search,
+                                           LocalDateTime periodStart, LocalDateTime periodEnd,
+                                           Long responsableId, Pageable pageable) {
         log.debug("Récupération de tous les sites");
-        
+
         StatutSite statut = null;
         if (status != null) {
             try {
@@ -178,7 +176,8 @@ public class SiteServiceImpl implements SiteService {
             }
         }
 
-        Page<Site> sites = siteRepository.findSitesWithFilters(statut, clientId, search, pageable);
+        Page<Site> sites = siteRepository.findSitesWithFilters(
+            statut, clientId, search, periodStart, periodEnd, responsableId, pageable);
         return sites.map(siteMapper::toResponse);
     }
 
@@ -238,12 +237,12 @@ public class SiteServiceImpl implements SiteService {
         User user = userRepository.findByEmail(email)
             .orElseThrow(() -> new ResourceNotFoundException("Utilisateur", "email", email));
 
-        log.debug("Récupération des sites de l'utilisateur: {}", email);
-        
-        // Récupérer les sites où l'utilisateur est impliqué
-        // Note: Cette méthode serait plus complexe en réalité
-        return siteRepository.findAll(pageable)
-            .map(siteMapper::toResponse);
+        log.debug("Récupération des sites de l'utilisateur: {} (id={})", email, user.getId());
+
+        List<Site> sites = siteRepository.findSitesByUserId(user.getId());
+        List<SiteResponse> content = siteMapper.toResponseList(sites);
+
+        return new PageImpl<>(content, pageable, content.size());
     }
 
     @Override
@@ -251,7 +250,7 @@ public class SiteServiceImpl implements SiteService {
         log.debug("Récupération des statistiques globales des sites");
 
         Map<String, Object> stats = new HashMap<>();
-        
+
         long totalSites = siteRepository.count();
         long sitesEnCours = siteRepository.countByStatus(StatutSite.EN_COURS);
         long sitesTermines = siteRepository.countByStatus(StatutSite.TERMINE);

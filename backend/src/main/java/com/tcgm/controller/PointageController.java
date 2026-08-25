@@ -75,6 +75,13 @@ public class PointageController {
         return ResponseEntity.noContent().build();
     }
 
+    // ✅ NOUVEAU : bascule EN_ATTENTE -> EN_ATTENTE_VALIDATION (§6 cahier des charges)
+    @PostMapping("/dossiers/{id}/soumettre")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'AGENT_SAISIE')")
+    public ResponseEntity<DossierPointageResponse> soumettreDossierPointage(@PathVariable Long id) {
+        return ResponseEntity.ok(pointageService.soumettreDossierPointage(id));
+    }
+
     @PostMapping("/dossiers/{id}/valider")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
     public ResponseEntity<DossierPointageResponse> validerDossierPointage(
@@ -98,7 +105,7 @@ public class PointageController {
     }
 
     @GetMapping("/statistiques/site/{siteId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'AGENT_SAISIE')")
     public ResponseEntity<?> getPointageStatistiques(@PathVariable Long siteId) {
         return ResponseEntity.ok(pointageService.getPointageStatistiques(siteId));
     }

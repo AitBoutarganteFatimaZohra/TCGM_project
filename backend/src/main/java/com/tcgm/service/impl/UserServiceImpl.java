@@ -1,5 +1,6 @@
 package com.tcgm.service.impl;
 
+import com.tcgm.dto.request.ChangePasswordRequest;
 import com.tcgm.dto.request.UserCreateRequest;
 import com.tcgm.dto.request.UserUpdateRequest;
 import com.tcgm.dto.response.UserResponse;
@@ -22,6 +23,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -38,17 +42,14 @@ public class UserServiceImpl implements UserService {
     public UserResponse createUser(UserCreateRequest request) {
         log.info("Création d'un nouvel utilisateur: {}", request.getEmail());
 
-        // Vérifier si l'email existe
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new BadRequestException("Cet email est déjà utilisé");
         }
 
-        // Récupérer le rôle
         String roleName = request.getRole() != null ? request.getRole() : "CHEF_PROJET";
         Role role = roleRepository.findByName(RoleName.valueOf(roleName))
             .orElseThrow(() -> new BadRequestException("Rôle invalide"));
 
-        // Créer l'utilisateur
         User user = User.builder()
             .firstName(request.getFirstName())
             .lastName(request.getLastName())
@@ -61,7 +62,6 @@ public class UserServiceImpl implements UserService {
 
         user = userRepository.save(user);
 
-        // Journaliser l'action
         journalService.logAction(
             TypeAction.CREATION,
             "USER",
@@ -199,5 +199,50 @@ public class UserServiceImpl implements UserService {
 
         log.info("Rôle assigné avec succès à l'utilisateur: {}", user.getEmail());
         return userMapper.toResponse(user);
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(String email, ChangePasswordRequest request) {
+        log.info("Changement de mot de passe pour: {}", email);
+
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new ResourceNotFoundException("Utilisateur", "email", email));
+
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            throw new BadRequestException("Mot de passe actuel incorrect");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+
+        journalService.logAction(
+            TypeAction.MODIFICATION,
+            "USER",
+            user.getId(),
+            "Changement de mot de passe: " + user.getEmail(),
+            null
+        );
+
+        log.info("Mot de passe changé avec succès pour: {}", email);
+    }
+
+    // =========================================================
+    // ⚠️ NOUVEAU : utilisateurs par rôle (pour les <select> d'affectation)
+    // =========================================================
+    @Override
+    public List<UserResponse> getUsersByRole(String roleName) {
+        log.debug("Récupération des utilisateurs par rôle: {}", roleName);
+
+        RoleName role;
+        try {
+            role = RoleName.valueOf(roleName);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Rôle invalide : " + roleName);
+        }
+
+        return userRepository.findByRoleName(role).stream()
+            .map(userMapper::toResponse)
+            .collect(Collectors.toList());
     }
 }

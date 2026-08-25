@@ -24,6 +24,12 @@ public class TacheDetailResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    // ===== Circuit de validation =====
+    private StatutTache previousStatus;
+    private StatutTache proposedStatus;
+    private LocalDateTime proposedPlannedDate;
+    private String rejectionReason;
+
     @Data
     @Builder
     public static class SiteBrief {

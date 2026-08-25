@@ -4,25 +4,15 @@ import com.tcgm.dto.request.DossierPointageRequest;
 import com.tcgm.dto.request.LignePointageRequest;
 import com.tcgm.dto.response.DossierPointageResponse;
 import com.tcgm.dto.response.LignePointageResponse;
-import com.tcgm.dto.response.PointageResponse;
 import com.tcgm.model.DossierPointage;
 import com.tcgm.model.LignePointage;
-import com.tcgm.model.enums.StatutPointage;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import org.mapstruct.MappingTarget;
-import org.mapstruct.Named;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 @Mapper(componentModel = "spring")
 public interface PointageMapper {
-
-    // =========================================================
-    // ENTITY → RESPONSE
-    // =========================================================
 
     @Mapping(target = "site", expression = "java(mapSiteBrief(dossier))")
     @Mapping(target = "createdBy", expression = "java(mapUserBrief(dossier.getCreatedBy()))")
@@ -39,15 +29,11 @@ public interface PointageMapper {
     @Mapping(target = "tacheTitle", source = "tache.title")
     LignePointageResponse toLigneResponse(LignePointage ligne);
 
-    // =========================================================
-    // REQUEST → ENTITY
-    // =========================================================
-
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "site", ignore = true)
     @Mapping(target = "createdBy", ignore = true)
     @Mapping(target = "validatedBy", ignore = true)
-    @Mapping(target = "status", expression = "java(com.tcgm.model.enums.StatutPointage.EN_ATTENTE)")  // ← CORRIGÉ
+    @Mapping(target = "status", expression = "java(com.tcgm.model.enums.StatutPointage.EN_ATTENTE)")
     @Mapping(target = "validatedAt", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
@@ -61,16 +47,8 @@ public interface PointageMapper {
     @Mapping(target = "createdAt", ignore = true)
     LignePointage toLigneEntity(LignePointageRequest request);
 
-    // =========================================================
-    // LISTES
-    // =========================================================
-
     List<LignePointageResponse> toLigneResponseList(List<LignePointage> lignes);
     List<DossierPointageResponse> toDossierResponseList(List<DossierPointage> dossiers);
-
-    // =========================================================
-    // MÉTHODES UTILITAIRES (implémentées par défaut)
-    // =========================================================
 
     default DossierPointageResponse.SiteBrief mapSiteBrief(DossierPointage dossier) {
         if (dossier.getSite() == null) return null;
@@ -91,19 +69,26 @@ public interface PointageMapper {
             .build();
     }
 
-    default Integer calculerTotalHeures(List<LignePointage> lignes) {
-        if (lignes == null || lignes.isEmpty()) return 0;
-        int total = 0;
+    /**
+     * Total en heures avec demi-heures (ex: 7.5), calculé à partir des
+     * horaires réels de chaque ligne. Le flag halfDay ne sert plus qu'à
+     * piloter l'UI (désactivation des champs) — les startTime/endTime
+     * réels (08:00-12:00 ou 13:00-17:00) sont toujours envoyés, donc le
+     * calcul par différence fonctionne uniformément pour toutes les lignes.
+     */
+    default Double calculerTotalHeures(List<LignePointage> lignes) {
+        if (lignes == null || lignes.isEmpty()) return 0.0;
+        double total = 0.0;
         for (LignePointage ligne : lignes) {
             if (ligne.getStartTime() != null && ligne.getEndTime() != null) {
-                long diff = java.time.Duration.between(ligne.getStartTime(), ligne.getEndTime()).toHours();
-                total += (int) diff;
-            } else if (ligne.getHalfDay() != null && ligne.getHalfDay()) {
-                total += 4;
-            } else if (ligne.getHalfDay() != null && !ligne.getHalfDay()) {
-                total += 8;
+                long minutes = java.time.Duration.between(ligne.getStartTime(), ligne.getEndTime()).toMinutes();
+                total += minutes / 60.0;
+            } else if (Boolean.TRUE.equals(ligne.getHalfDay())) {
+                total += 4.0;
+            } else {
+                total += 8.0;
             }
         }
-        return total;
+        return Math.round(total * 2) / 2.0; // arrondi au quart d'heure... au 0.5h près
     }
 }

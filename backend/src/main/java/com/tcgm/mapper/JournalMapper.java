@@ -4,7 +4,6 @@ import com.tcgm.dto.response.JournalResponse;
 import com.tcgm.model.JournalOperation;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import java.util.ArrayList;
 import java.util.List;
 
 @Mapper(componentModel = "spring")
@@ -17,6 +16,9 @@ public interface JournalMapper {
     @Mapping(target = "user", expression = "java(mapUser(operation))")
     @Mapping(target = "actionType", source = "actionType")
     @Mapping(target = "entityType", source = "entityType")
+    @Mapping(target = "status", source = "status")
+    @Mapping(target = "validatedBy", expression = "java(mapValidatedBy(operation))")
+    @Mapping(target = "validatedAt", source = "validatedAt")
     JournalResponse toResponse(JournalOperation operation);
 
     // =========================================================
@@ -36,6 +38,16 @@ public interface JournalMapper {
             .firstName(operation.getUser().getFirstName())
             .lastName(operation.getUser().getLastName())
             .email(operation.getUser().getEmail())
+            .build();
+    }
+
+    default JournalResponse.UserBrief mapValidatedBy(JournalOperation operation) {
+        if (operation.getValidatedBy() == null) return null;
+        return JournalResponse.UserBrief.builder()
+            .id(operation.getValidatedBy().getId())
+            .firstName(operation.getValidatedBy().getFirstName())
+            .lastName(operation.getValidatedBy().getLastName())
+            .email(operation.getValidatedBy().getEmail())
             .build();
     }
 }

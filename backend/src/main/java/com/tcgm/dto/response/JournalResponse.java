@@ -17,6 +17,13 @@ public class JournalResponse {
     private UserBrief user;
     private LocalDateTime createdAt;
 
+    // =========================================================
+    // VALIDATION (cahier des charges §6.7)
+    // =========================================================
+    private String status; // EN_ATTENTE, VALIDE, REJETE
+    private UserBrief validatedBy;
+    private LocalDateTime validatedAt;
+
     @Data
     @Builder
     public static class UserBrief {

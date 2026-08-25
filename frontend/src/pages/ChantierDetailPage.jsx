@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import useChantiers from '../hooks/useChantiers';
 import ChantierMap from '../components/ChantierMap';
+import { getSiteStats } from '../api/statistiqueApi';
 
 const STATUS_LABELS = {
   PLANIFIE: 'Planifié',
@@ -23,10 +24,26 @@ const ChantierDetailPage = () => {
   const [chantier, setChantier] = useState(null);
   const [error, setError] = useState(null);
 
+  // ⚠️ NOUVEAU : suivi d'avancement (§9 cahier des charges)
+  const [stats, setStats] = useState(null);
+  const [statsError, setStatsError] = useState(null);
+
   useEffect(() => {
     fetchChantierById(id)
       .then(setChantier)
       .catch(() => setError("Impossible de charger ce chantier."));
+  }, [id]);
+
+  useEffect(() => {
+    getSiteStats(id)
+      .then((data) => {
+        if (data?.error) {
+          setStatsError(data.error);
+        } else {
+          setStats(data);
+        }
+      })
+      .catch(() => setStatsError("Impossible de charger l'avancement."));
   }, [id]);
 
   const handleDelete = async () => {
@@ -47,6 +64,10 @@ const ChantierDetailPage = () => {
   if (!chantier) {
     return null;
   }
+
+  const tauxAvancement = stats?.tauxAvancement ?? 0;
+  const tachesTerminees = stats?.tachesTerminees ?? 0;
+  const totalTachesStats = stats?.totalTaches ?? chantier.totalTaches ?? 0;
 
   return (
     <div className="chantiers-page">
@@ -77,6 +98,39 @@ const ChantierDetailPage = () => {
           <div className="num">{chantier.totalPointages ?? 0}</div>
           <div className="lbl">Pointages</div>
         </div>
+      </div>
+
+      {/* ⚠️ NOUVEAU : bloc suivi d'avancement */}
+      <div className="chantier-card" style={{ maxWidth: 620, marginBottom: 20 }}>
+        <p style={{ marginBottom: 8 }}><strong>Avancement du chantier</strong></p>
+        {statsError ? (
+          <p style={{ color: '#8b8580', fontSize: 13 }}>{statsError}</p>
+        ) : (
+          <>
+            <div
+              style={{
+                width: '100%',
+                height: 10,
+                borderRadius: 6,
+                background: '#f0ece7',
+                overflow: 'hidden',
+                marginBottom: 6,
+              }}
+            >
+              <div
+                style={{
+                  width: `${Math.min(100, Math.round(tauxAvancement))}%`,
+                  height: '100%',
+                  background: tauxAvancement >= 100 ? '#15803d' : '#c94d25',
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+            <p style={{ fontSize: 13, color: '#4b5563' }}>
+              <strong>{Math.round(tauxAvancement)}%</strong> — {tachesTerminees} / {totalTachesStats} tâches terminées
+            </p>
+          </>
+        )}
       </div>
 
       <div className="chantier-card" style={{ maxWidth: 620, marginBottom: 20 }}>

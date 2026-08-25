@@ -5,6 +5,7 @@ import {
   createDossierPointage,
   updateDossierPointage,
   deleteDossierPointage,
+  soumettreDossierPointage,
   validerDossierPointage,
   rejeterDossierPointage,
   addLignePointage,
@@ -88,6 +89,19 @@ const usePointage = () => {
     }
   };
 
+  // ✅ NOUVEAU
+  const submitDossier = async (id) => {
+    setError(null);
+    try {
+      const updated = await soumettreDossierPointage(id);
+      setDossiers((prev) => prev.map((d) => (d.id === id ? updated : d)));
+      return updated;
+    } catch (err) {
+      setError(err.response?.data?.message || 'Erreur lors de la soumission du dossier');
+      throw err;
+    }
+  };
+
   const validateDossier = async (id, data) => {
     setLoading(true);
     setError(null);
@@ -153,6 +167,7 @@ const usePointage = () => {
     addDossier,
     editDossier,
     removeDossier,
+    submitDossier,
     validateDossier,
     rejectDossier,
     addLigne,

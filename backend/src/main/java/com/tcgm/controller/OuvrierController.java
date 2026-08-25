@@ -28,15 +28,17 @@ public class OuvrierController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'AGENT_SAISIE')")
     public ResponseEntity<OuvrierResponse> getOuvrierById(@PathVariable Long id) {
         return ResponseEntity.ok(ouvrierService.getOuvrierById(id));
     }
 
+    // 🔧 CORRIGÉ : AGENT_SAISIE ajouté — sans quoi le dropdown "Ouvrier"
+    // du formulaire de pointage reste vide (403 silencieux côté frontend).
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER', 'AGENT_SAISIE')")
     public ResponseEntity<Page<OuvrierResponse>> getAllOuvriers(
-            @RequestParam(required = false) Long chantierId,  // ← MODIFIÉ : siteId → chantierId
+            @RequestParam(required = false) Long chantierId,
             @RequestParam(required = false) String specialite,
             @RequestParam(required = false) Boolean active,
             @RequestParam(required = false) String search,
@@ -72,9 +74,11 @@ public class OuvrierController {
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/chantier/{chantierId}")  // ← MODIFIÉ : site → chantier
-    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER')")
-    public ResponseEntity<Page<OuvrierResponse>> getOuvriersByChantier(  // ← MODIFIÉ : getOuvriersBySite → getOuvriersByChantier
+    // 🔧 CORRIGÉ : AGENT_SAISIE ajouté — utilisé pour peupler le dropdown
+    // "Ouvrier" scopé sur le chantier unique de l'agent.
+    @GetMapping("/chantier/{chantierId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER', 'AGENT_SAISIE')")
+    public ResponseEntity<Page<OuvrierResponse>> getOuvriersByChantier(
             @PathVariable Long chantierId,
             Pageable pageable) {
         return ResponseEntity.ok(ouvrierService.getOuvriersByChantier(chantierId, pageable));

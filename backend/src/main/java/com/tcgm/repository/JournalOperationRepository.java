@@ -15,44 +15,36 @@ import java.util.List;
 @Repository
 public interface JournalOperationRepository extends JpaRepository<JournalOperation, Long> {
 
-    /**
-     * Trouver les opérations par utilisateur
-     */
-    Page<JournalOperation> findByUserId(Long userId, Pageable pageable);
+    // 🔧 CORRIGÉ : suffixe OrderByCreatedAtDesc ajouté (requêtes dérivées
+    // par nom de méthode → tri appliqué automatiquement par Spring Data,
+    // sans dépendre du Pageable envoyé par le frontend).
+    Page<JournalOperation> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
-    /**
-     * Trouver les opérations par type d'action
-     */
-    Page<JournalOperation> findByActionType(TypeAction actionType, Pageable pageable);
+    Page<JournalOperation> findByActionTypeOrderByCreatedAtDesc(TypeAction actionType, Pageable pageable);
 
-    /**
-     * Trouver les opérations par type d'entité
-     */
-    Page<JournalOperation> findByEntityType(String entityType, Pageable pageable);
+    Page<JournalOperation> findByEntityTypeOrderByCreatedAtDesc(String entityType, Pageable pageable);
 
-    /**
-     * Trouver les opérations par entité spécifique
-     */
-    Page<JournalOperation> findByEntityTypeAndEntityId(String entityType, Long entityId, Pageable pageable);
+    Page<JournalOperation> findByEntityTypeAndEntityIdOrderByCreatedAtDesc(String entityType, Long entityId, Pageable pageable);
 
-    /**
-     * Trouver les opérations par période
-     */
+    // 🔧 CORRIGÉ : ORDER BY ajouté.
     @Query("SELECT j FROM JournalOperation j " +
-           "WHERE j.createdAt BETWEEN :startDate AND :endDate")
+           "WHERE j.createdAt BETWEEN :startDate AND :endDate " +
+           "ORDER BY j.createdAt DESC")
     Page<JournalOperation> findOperationsByPeriod(@Param("startDate") LocalDateTime startDate,
                                                    @Param("endDate") LocalDateTime endDate,
                                                    Pageable pageable);
 
-    /**
-     * Recherche avancée avec filtres
-     */
+    // Vision globale (ADMIN uniquement) : aucune restriction sur l'auteur.
+    // 🔧 CORRIGÉ : ORDER BY ajouté — c'est LA requête la plus utilisée
+    // (tous les rôles hors export passent par ici ou par les deux
+    // suivantes), donc la correction la plus impactante du fichier.
     @Query("SELECT j FROM JournalOperation j WHERE " +
            "(:actionType IS NULL OR j.actionType = :actionType) AND " +
            "(:entityType IS NULL OR j.entityType = :entityType) AND " +
            "(:entityId IS NULL OR j.entityId = :entityId) AND " +
            "(:userId IS NULL OR j.user.id = :userId) AND " +
-           "(:search IS NULL OR LOWER(j.details) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "(:search IS NULL OR LOWER(j.details) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "ORDER BY j.createdAt DESC")
     Page<JournalOperation> findOperationsWithFilters(
             @Param("actionType") TypeAction actionType,
             @Param("entityType") String entityType,
@@ -61,63 +53,72 @@ public interface JournalOperationRepository extends JpaRepository<JournalOperati
             @Param("search") String search,
             Pageable pageable);
 
-    /**
-     * Trouver les opérations par période avec filtres
-     */
+    // Filtre restreint à un site donné (Magasinier / Agent de Saisie via
+    // computeAllowedUserIdsForSite).
+    // 🔧 CORRIGÉ : ORDER BY ajouté.
     @Query("SELECT j FROM JournalOperation j WHERE " +
            "(:actionType IS NULL OR j.actionType = :actionType) AND " +
            "(:entityType IS NULL OR j.entityType = :entityType) AND " +
-           "j.createdAt BETWEEN :startDate AND :endDate")
-    Page<JournalOperation> findOperationsWithPeriodAndFilters(
+           "(:entityId IS NULL OR j.entityId = :entityId) AND " +
+           "(:userId IS NULL OR j.user.id = :userId) AND " +
+           "(:search IS NULL OR LOWER(j.details) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
+           "( (j.entityType = 'SITE' AND j.entityId = :siteId) OR " +
+           "  (j.entityType = 'RESSOURCE' AND j.entityId IN " +
+           "     (SELECT r.id FROM Ressource r WHERE r.site.id = :siteId)) ) " +
+           "ORDER BY j.createdAt DESC")
+    Page<JournalOperation> findOperationsWithFiltersAndSite(
             @Param("actionType") TypeAction actionType,
             @Param("entityType") String entityType,
-            @Param("startDate") LocalDateTime startDate,
-            @Param("endDate") LocalDateTime endDate,
+            @Param("entityId") Long entityId,
+            @Param("userId") Long userId,
+            @Param("search") String search,
+            @Param("siteId") Long siteId,
             Pageable pageable);
 
-    /**
-     * Compter les opérations par type d'action
-     */
+    // Vision restreinte à un périmètre d'utilisateurs (Chef de Projet /
+    // Chef de Chantier / Agent de Saisie / Magasinier).
+    // 🔧 CORRIGÉ : ORDER BY ajouté — c'est la requête utilisée pour TOUS
+    // les rôles non-admin, y compris le nouveau journal de l'Agent de
+    // Saisie : c'était la plus importante à corriger pour ta demande.
+    @Query("SELECT j FROM JournalOperation j WHERE " +
+           "(:actionType IS NULL OR j.actionType = :actionType) AND " +
+           "(:entityType IS NULL OR j.entityType = :entityType) AND " +
+           "(:entityId IS NULL OR j.entityId = :entityId) AND " +
+           "(:userId IS NULL OR j.user.id = :userId) AND " +
+           "(:search IS NULL OR LOWER(j.details) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
+           "j.user.id IN :allowedUserIds " +
+           "ORDER BY j.createdAt DESC")
+    Page<JournalOperation> findOperationsWithFiltersForUsers(
+            @Param("actionType") TypeAction actionType,
+            @Param("entityType") String entityType,
+            @Param("entityId") Long entityId,
+            @Param("userId") Long userId,
+            @Param("search") String search,
+            @Param("allowedUserIds") List<Long> allowedUserIds,
+            Pageable pageable);
+
     @Query("SELECT j.actionType, COUNT(j) FROM JournalOperation j GROUP BY j.actionType")
     List<Object[]> countOperationsByActionType();
 
-    /**
-     * Compter les opérations par type d'entité
-     */
     @Query("SELECT j.entityType, COUNT(j) FROM JournalOperation j GROUP BY j.entityType")
     List<Object[]> countOperationsByEntityType();
 
-    /**
-     * Compter les opérations par jour
-     */
     @Query("SELECT DATE(j.createdAt), COUNT(j) FROM JournalOperation j " +
            "WHERE j.createdAt BETWEEN :startDate AND :endDate " +
            "GROUP BY DATE(j.createdAt)")
     List<Object[]> countOperationsByDay(@Param("startDate") LocalDateTime startDate,
                                         @Param("endDate") LocalDateTime endDate);
 
-    /**
-     * Compter les opérations par utilisateur
-     */
     @Query("SELECT j.user.id, COUNT(j) FROM JournalOperation j " +
            "WHERE j.user IS NOT NULL GROUP BY j.user.id ORDER BY COUNT(j) DESC")
     List<Object[]> countOperationsByUser();
 
-    /**
-     * Trouver les dernières opérations
-     */
     @Query("SELECT j FROM JournalOperation j ORDER BY j.createdAt DESC")
     List<JournalOperation> findLastOperations(Pageable pageable);
 
-    /**
-     * Compter les opérations par statut (pour validation)
-     */
     @Query("SELECT COUNT(j) FROM JournalOperation j WHERE j.actionType = 'VALIDATION'")
     long countValidationOperations();
 
-    /**
-     * Trouver les opérations d'un type d'entité spécifique sur une période
-     */
     @Query("SELECT j FROM JournalOperation j " +
            "WHERE j.entityType = :entityType AND j.createdAt BETWEEN :startDate AND :endDate")
     List<JournalOperation> findOperationsByEntityTypeAndPeriod(
@@ -125,11 +126,19 @@ public interface JournalOperationRepository extends JpaRepository<JournalOperati
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate);
 
-    /**
-     * Vérifier si des opérations existent pour une entité
-     */
     @Query("SELECT COUNT(j) > 0 FROM JournalOperation j " +
            "WHERE j.entityType = :entityType AND j.entityId = :entityId")
     boolean existsOperationsForEntity(@Param("entityType") String entityType,
                                       @Param("entityId") Long entityId);
+
+    // Liste complète (non paginée) pour générer l'export PDF/Excel —
+    // avait déjà le bon ORDER BY, inchangé.
+    @Query("SELECT j FROM JournalOperation j WHERE " +
+           "(:entityType IS NULL OR j.entityType = :entityType) AND " +
+           "(:startDate IS NULL OR j.createdAt >= :startDate) AND " +
+           "(:endDate IS NULL OR j.createdAt <= :endDate) " +
+           "ORDER BY j.createdAt DESC")
+    List<JournalOperation> findForExport(@Param("entityType") String entityType,
+                                          @Param("startDate") LocalDateTime startDate,
+                                          @Param("endDate") LocalDateTime endDate);
 }

@@ -1,37 +1,82 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useChantiers from '../hooks/useChantiers';
+import useAuth from '../hooks/useAuth';
 import LocationPicker from '../components/LocationPicker';
+import { getClients } from '../api/clientApi';
+import { getUsersByRole } from '../api/userApi';
 
 const initialForm = {
-  name: '',
-  reference: '',
-  address: '',
-  description: '',
-  latitude: null,
-  longitude: null,
-  status: 'PLANIFIE',
-  startDate: '',
-  endDate: '',
-  clientId: '',
-  chefProjetId: '',
-  magasinierId: '',
-  agentSaisieId: '',
-  chefChantierId: '',
+  name: '', reference: '', address: '', description: '',
+  latitude: null, longitude: null, status: 'PLANIFIE',
+  startDate: '', endDate: '', clientId: '', chefProjetId: '',
+  magasinierId: '', agentSaisieId: '', chefChantierId: '',
 };
 
-// Le backend attend des LocalDateTime, pas de simples dates.
-// On complète avec T00:00:00 pour que Jackson parse correctement.
 const toLocalDateTime = (dateStr) => (dateStr ? `${dateStr}T00:00:00` : null);
-
-// Les champs d'ID optionnels doivent être null (pas "") si vides,
-// sinon Spring tentera de parser une chaîne vide en Long et plantera.
 const toNullableLong = (value) => (value ? Number(value) : null);
+const userLabel = (u) => `${u.firstName} ${u.lastName}`;
 
 const ChantierCreatePage = () => {
   const { addChantier, loading, error } = useChantiers();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState(initialForm);
+
+  const isAdmin = user?.role === 'ADMIN';
+  const isChefProjet = user?.role === 'CHEF_PROJET';
+
+  const [clients, setClients] = useState([]);
+  const [chefsProjet, setChefsProjet] = useState([]);
+  const [chefsChantier, setChefsChantier] = useState([]);
+  const [magasiniers, setMagasiniers] = useState([]);
+  const [agentsSaisie, setAgentsSaisie] = useState([]);
+  const [loadingOptions, setLoadingOptions] = useState(true);
+  const [optionsError, setOptionsError] = useState(null);
+
+  useEffect(() => {
+    if (user && !isAdmin && !isChefProjet) {
+      navigate('/chantiers');
+    }
+  }, [user, isAdmin, isChefProjet, navigate]);
+
+  useEffect(() => {
+    if (isChefProjet && user?.id) {
+      setForm((prev) => ({ ...prev, chefProjetId: String(user.id) }));
+    }
+  }, [isChefProjet, user]);
+
+  useEffect(() => {
+    const loadOptions = async () => {
+      setLoadingOptions(true);
+      setOptionsError(null);
+      try {
+        const requests = [
+          getClients({ size: 200 }),
+          getUsersByRole('CHEF_CHANTIER'),
+          getUsersByRole('MAGASINIER'),
+          getUsersByRole('AGENT_SAISIE'),
+        ];
+        if (isAdmin) {
+          requests.push(getUsersByRole('CHEF_PROJET'));
+        }
+
+        const results = await Promise.all(requests);
+        setClients(results[0]?.content ?? results[0] ?? []);
+        setChefsChantier(results[1] ?? []);
+        setMagasiniers(results[2] ?? []);
+        setAgentsSaisie(results[3] ?? []);
+        if (isAdmin) {
+          setChefsProjet(results[4] ?? []);
+        }
+      } catch (err) {
+        setOptionsError('Impossible de charger les listes (clients/utilisateurs).');
+      } finally {
+        setLoadingOptions(false);
+      }
+    };
+    loadOptions();
+  }, [isAdmin]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -44,7 +89,6 @@ const ChantierCreatePage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     const payload = {
       name: form.name,
       reference: form.reference || null,
@@ -56,7 +100,7 @@ const ChantierCreatePage = () => {
       startDate: toLocalDateTime(form.startDate),
       endDate: toLocalDateTime(form.endDate),
       clientId: toNullableLong(form.clientId),
-      chefProjetId: toNullableLong(form.chefProjetId),
+      chefProjetId: isChefProjet ? user.id : toNullableLong(form.chefProjetId),
       magasinierId: toNullableLong(form.magasinierId),
       agentSaisieId: toNullableLong(form.agentSaisieId),
       chefChantierId: toNullableLong(form.chefChantierId),
@@ -72,11 +116,10 @@ const ChantierCreatePage = () => {
 
   return (
     <div className="chantiers-page">
-      <div className="page-header">
-        <h1>🏗️ Nouveau chantier</h1>
-      </div>
+      <div className="page-header"><h1>🏗️ Nouveau chantier</h1></div>
 
       {error && <div className="error-banner">❌ {error}</div>}
+      {optionsError && <div className="error-banner">❌ {optionsError}</div>}
 
       <form onSubmit={handleSubmit} className="chantier-form">
         <div className="form-group">
@@ -96,21 +139,11 @@ const ChantierCreatePage = () => {
 
         <div className="form-group">
           <label>Description</label>
-          <textarea
-            name="description"
-            value={form.description}
-            onChange={handleChange}
-            rows={4}
-            placeholder="Détails du chantier, contraintes d'accès, particularités..."
-          />
+          <textarea name="description" value={form.description} onChange={handleChange} rows={4}
+            placeholder="Détails du chantier, contraintes d'accès, particularités..." />
         </div>
 
-        <LocationPicker
-          address={form.address}
-          latitude={form.latitude}
-          longitude={form.longitude}
-          onChange={handleLocationChange}
-        />
+        <LocationPicker address={form.address} latitude={form.latitude} longitude={form.longitude} onChange={handleLocationChange} />
 
         <div className="form-row">
           <div className="form-group">
@@ -133,45 +166,68 @@ const ChantierCreatePage = () => {
           </select>
         </div>
 
-        {/*
-          TEMPORAIRE : IDs saisis à la main en attendant useClients.js et
-          la liste des utilisateurs par rôle, pour remplacer ça par de
-          vrais <select> avec les noms (Client, Chef de projet, etc.).
-        */}
         <div className="form-row">
           <div className="form-group">
-            <label>ID Client *</label>
-            <input type="number" name="clientId" value={form.clientId} onChange={handleChange} required />
+            <label>Client *</label>
+            <select name="clientId" value={form.clientId} onChange={handleChange} required disabled={loadingOptions}>
+              <option value="">{loadingOptions ? 'Chargement...' : '— Sélectionner un client —'}</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
           </div>
+
           <div className="form-group">
-            <label>ID Chef de projet *</label>
-            <input type="number" name="chefProjetId" value={form.chefProjetId} onChange={handleChange} required />
+            <label>Chef de projet *</label>
+            {isChefProjet ? (
+              <input type="text" value={`${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Vous'} disabled />
+            ) : (
+              <select name="chefProjetId" value={form.chefProjetId} onChange={handleChange} required disabled={loadingOptions}>
+                <option value="">{loadingOptions ? 'Chargement...' : '— Sélectionner —'}</option>
+                {chefsProjet.map((u) => (
+                  <option key={u.id} value={u.id}>{userLabel(u)}</option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
 
         <div className="form-row">
           <div className="form-group">
-            <label>ID Magasinier</label>
-            <input type="number" name="magasinierId" value={form.magasinierId} onChange={handleChange} />
+            <label>Magasinier</label>
+            <select name="magasinierId" value={form.magasinierId} onChange={handleChange} disabled={loadingOptions}>
+              <option value="">{loadingOptions ? 'Chargement...' : '— Aucun —'}</option>
+              {magasiniers.map((u) => (
+                <option key={u.id} value={u.id}>{userLabel(u)}</option>
+              ))}
+            </select>
           </div>
           <div className="form-group">
-            <label>ID Agent de saisie</label>
-            <input type="number" name="agentSaisieId" value={form.agentSaisieId} onChange={handleChange} />
+            <label>Agent de saisie</label>
+            <select name="agentSaisieId" value={form.agentSaisieId} onChange={handleChange} disabled={loadingOptions}>
+              <option value="">{loadingOptions ? 'Chargement...' : '— Aucun —'}</option>
+              {agentsSaisie.map((u) => (
+                <option key={u.id} value={u.id}>{userLabel(u)}</option>
+              ))}
+            </select>
           </div>
         </div>
 
         <div className="form-group">
-          <label>ID Chef de chantier</label>
-          <input type="number" name="chefChantierId" value={form.chefChantierId} onChange={handleChange} />
+          <label>Chef de chantier</label>
+          <select name="chefChantierId" value={form.chefChantierId} onChange={handleChange} disabled={loadingOptions}>
+            <option value="">{loadingOptions ? 'Chargement...' : '— Aucun —'}</option>
+            {chefsChantier.map((u) => (
+              <option key={u.id} value={u.id}>{userLabel(u)}</option>
+            ))}
+          </select>
         </div>
 
         <div className="form-actions">
-          <button type="submit" className="btn-primary" disabled={loading}>
+          <button type="submit" className="btn-primary" disabled={loading || loadingOptions}>
             {loading ? 'Création...' : 'Créer le chantier'}
           </button>
-          <button type="button" className="btn-view" onClick={() => navigate('/chantiers')}>
-            Annuler
-          </button>
+          <button type="button" className="btn-view" onClick={() => navigate('/chantiers')}>Annuler</button>
         </div>
       </form>
     </div>

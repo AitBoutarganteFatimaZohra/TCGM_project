@@ -2,25 +2,12 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import usePointage from '../hooks/usePointage';
 import { getChantiers } from '../api/chantierApi';
-
-const STATUTS = ['EN_ATTENTE', 'VALIDE', 'REJETE'];
-
-const STATUT_LABELS = {
-  EN_ATTENTE: 'En attente',
-  VALIDE: 'Validé',
-  REJETE: 'Rejeté',
-};
-
-const STATUT_BADGE_CLASS = {
-  EN_ATTENTE: 'badge badge--neutral',
-  VALIDE: 'badge badge--success',
-  REJETE: 'badge badge--danger',
-};
+import { STATUTS, STATUT_LABELS, STATUT_BADGE_CLASS, formatDateFr, formatTotalHeures } from '../utils/pointageFormat';
 
 const PAGE_SIZE = 10;
 
 const PointagePage = () => {
-  const { dossiers, loading, error, fetchDossiers, removeDossier } = usePointage();
+  const { dossiers, loading, error, fetchDossiers, removeDossier, submitDossier } = usePointage();
 
   const [chantiers, setChantiers] = useState([]);
   const [siteFilter, setSiteFilter] = useState('');
@@ -29,12 +16,14 @@ const PointagePage = () => {
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
+  const [submittingId, setSubmittingId] = useState(null);
+  const [actionError, setActionError] = useState(null);
 
   useEffect(() => {
     getChantiers().then((data) => setChantiers(data.content || data)).catch(() => {});
   }, []);
 
-  useEffect(() => {
+  const reload = () => {
     const params = { page, size: PAGE_SIZE };
     if (siteFilter) params.siteId = siteFilter;
     if (dateFilter) params.date = dateFilter;
@@ -46,12 +35,29 @@ const PointagePage = () => {
         setTotalElements(data.totalElements);
       }
     });
+  };
+
+  useEffect(() => {
+    reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, siteFilter, dateFilter, statutFilter]);
 
   const handleDelete = async (id) => {
     if (window.confirm('Supprimer ce dossier de pointage ?')) {
       await removeDossier(id);
+    }
+  };
+
+  const handleSubmit = async (id) => {
+    if (!window.confirm('Soumettre ce pointage pour validation ? Il ne sera plus modifiable ensuite.')) return;
+    setActionError(null);
+    setSubmittingId(id);
+    try {
+      await submitDossier(id);
+    } catch (err) {
+      setActionError(err.response?.data?.message || 'Erreur lors de la soumission.');
+    } finally {
+      setSubmittingId(null);
     }
   };
 
@@ -111,7 +117,7 @@ const PointagePage = () => {
         </select>
       </div>
 
-      {error && <div className="error-banner">{error}</div>}
+      {(error || actionError) && <div className="error-banner">{error || actionError}</div>}
 
       {loading ? (
         <div className="loading">Chargement...</div>
@@ -138,13 +144,13 @@ const PointagePage = () => {
             <tbody>
               {dossiers.map((d) => (
                 <tr key={d.id}>
-                  <td>{d.date}</td>
+                  <td>{formatDateFr(d.date)}</td>
                   <td>
                     {d.site?.name || '—'}
                     {d.site?.reference && <div className="activity-meta">{d.site.reference}</div>}
                   </td>
                   <td>{d.totalOuvriers ?? 0}</td>
-                  <td>{d.totalHeures ?? 0} h</td>
+                  <td>{formatTotalHeures(d.totalHeures)}</td>
                   <td>
                     <span className={STATUT_BADGE_CLASS[d.status] || 'badge badge--neutral'}>
                       {STATUT_LABELS[d.status] || d.status}
@@ -152,7 +158,7 @@ const PointagePage = () => {
                   </td>
                   <td className="col-actions">
                     <div className="row-actions">
-                      <Link to={`/pointage/${d.id}`} className="icon-btn icon-btn--view" title="Voir">
+                      <Link to={`/pointage/${d.id}`} className="icon-btn icon-btn--view" title="Détails">
                         👁
                       </Link>
                       {d.status === 'EN_ATTENTE' && (
@@ -166,6 +172,14 @@ const PointagePage = () => {
                             onClick={() => handleDelete(d.id)}
                           >
                             🗑
+                          </button>
+                          <button
+                            className="icon-btn icon-btn--success"
+                            title="Soumettre pour validation"
+                            onClick={() => handleSubmit(d.id)}
+                            disabled={submittingId === d.id}
+                          >
+                            ✓
                           </button>
                         </>
                       )}

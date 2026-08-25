@@ -25,8 +25,9 @@ public interface SiteMapper {
     @Mapping(target = "magasinier", expression = "java(mapUser(site.getMagasinier()))")
     @Mapping(target = "agentSaisie", expression = "java(mapUser(site.getAgentSaisie()))")
     @Mapping(target = "chefChantier", expression = "java(mapUser(site.getChefChantier()))")
-    // MODIFIÉ : taches → travaux
-    @Mapping(target = "totalTaches", expression = "java(site.getTravaux() != null ? site.getTravaux().size() : 0)")
+    // ⚠️ CORRECTIF : on compte le nombre total de Tache à travers tous les
+    // Travaux du site, pas le nombre de Travaux eux-mêmes.
+    @Mapping(target = "totalTaches", expression = "java(countTaches(site.getTravaux()))")
     // MODIFIÉ : affectationsOuvriers → affectations
     @Mapping(target = "totalOuvriers", expression = "java(site.getAffectations() != null ? site.getAffectations().size() : 0)")
     SiteResponse toResponse(Site site);
@@ -40,8 +41,8 @@ public interface SiteMapper {
     @Mapping(target = "taches", expression = "java(mapTachesBrief(site.getTravaux()))")
     // MODIFIÉ : affectationsOuvriers → affectations
     @Mapping(target = "ouvriers", expression = "java(mapOuvriersBrief(site.getAffectations()))")
-    // MODIFIÉ : taches → travaux
-    @Mapping(target = "totalTaches", expression = "java(site.getTravaux() != null ? site.getTravaux().size() : 0)")
+    // ⚠️ CORRECTIF : idem toResponse — on compte les Tache, pas les Travaux.
+    @Mapping(target = "totalTaches", expression = "java(countTaches(site.getTravaux()))")
     // MODIFIÉ : affectationsOuvriers → affectations
     @Mapping(target = "totalOuvriers", expression = "java(site.getAffectations() != null ? site.getAffectations().size() : 0)")
     @Mapping(target = "totalPointages", expression = "java(site.getDossiersPointage() != null ? site.getDossiersPointage().size() : 0)")
@@ -162,5 +163,15 @@ public interface SiteMapper {
                 .specialite(a.getOuvrier().getSpecialite())
                 .build())
             .collect(java.util.stream.Collectors.toList());
+    }
+
+    // ⚠️ NOUVEAU : compte le nombre réel de Tache à travers tous les Travaux
+    // d'un site (au lieu de site.getTravaux().size(), qui compte les Travaux
+    // et non les Tache qu'ils contiennent).
+    default int countTaches(List<com.tcgm.model.Travaux> travaux) {
+        if (travaux == null) return 0;
+        return travaux.stream()
+            .mapToInt(t -> t.getTaches() != null ? t.getTaches().size() : 0)
+            .sum();
     }
 }

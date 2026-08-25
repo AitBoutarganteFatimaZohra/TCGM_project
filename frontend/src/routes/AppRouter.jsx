@@ -2,13 +2,15 @@ import {
   Routes,
   Route,
   Navigate,
+  useLocation,
 } from 'react-router-dom';
 
 import useAuth from '../hooks/useAuth';
+import { hasAccess } from '../config/accessConfig';
 
 import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
-import DashboardPage from '../pages/DashboardPage';
+import DashboardRouter from '../pages/DashboardRouter';
 
 import ChantiersPage from '../pages/ChantiersPage';
 import ChantierCreatePage from '../pages/ChantierCreatePage';
@@ -45,12 +47,42 @@ import PointageCreatePage from '../pages/PointageCreatePage';
 import PointageDetailPage from '../pages/PointageDetailPage';
 import PointageEditPage from '../pages/PointageEditPage';
 
+// ↓ Nouveau : module Ressources (Magasinier)
+import RessourcesPage from '../pages/RessourcesPage';
+import RessourceCreatePage from '../pages/RessourceCreatePage';
+import RessourceDetailPage from '../pages/RessourceDetailPage';
+import RessourceEditPage from '../pages/RessourceEditPage';
+import MesTachesPage from '../pages/MesTachesPage';
+import MonJournalPage from '../pages/MonJournalPage';
+// ✅ NOUVEAU : journal personnel de l'Agent de Saisie
+import MonJournalAgentPage from '../pages/MonJournalAgentPage';
+import MonProfilPage from '../pages/MonProfilPage';
+
 import JournalPage from '../pages/JournalPage';
 
 import AuthLayout from '../layouts/AuthLayout';
 import DashboardLayout from '../layouts/DashboardLayout';
 
 import StatistiquesPage from '../pages/StatistiquesPage';
+
+// =========================================================
+// GARDE DE ROLE
+// =========================================================
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, user } = useAuth();
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Vérification des accès par rôle
+  if (!hasAccess(user?.role, location.pathname)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+};
 
 const AppRouter = () => {
   const { isAuthenticated, loading } = useAuth();
@@ -73,27 +105,27 @@ const AppRouter = () => {
 
   return (
     <Routes>
-
-      {/* ============================= */}
-      {/* PAGES PUBLIQUES (Login uniquement) */}
-      {/* ============================= */}
-
+      {/* Routes publiques */}
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
       </Route>
 
-      {/* ============================= */}
-      {/* ESPACE PROTÉGÉ (Dashboard + modules) */}
-      {/* ============================= */}
-
+      {/* Routes protégées */}
       <Route
         element={
-          isAuthenticated ? <DashboardLayout /> : <Navigate to="/login" replace />
+          isAuthenticated ? (
+            <ProtectedRoute>
+              <DashboardLayout />
+            </ProtectedRoute>
+          ) : (
+            <Navigate to="/login" replace />
+          )
         }
       >
-        <Route path="/dashboard" element={<DashboardPage />} />
+        {/* Dashboard */}
+        <Route path="/dashboard" element={<DashboardRouter />} />
 
-        {/* Création de compte réservée à l'Admin (vérifié dans RegisterPage) */}
+        {/* Utilisateurs */}
         <Route path="/utilisateurs/nouveau" element={<RegisterPage />} />
 
         {/* Chantiers */}
@@ -138,25 +170,32 @@ const AppRouter = () => {
         <Route path="/pointage/:id" element={<PointageDetailPage />} />
         <Route path="/pointage/:id/modifier" element={<PointageEditPage />} />
 
+        {/* Ressources (Magasinier) */}
+        <Route path="/ressources" element={<RessourcesPage />} />
+        <Route path="/ressources/create" element={<RessourceCreatePage />} />
+        <Route path="/ressources/:id" element={<RessourceDetailPage />} />
+        <Route path="/ressources/:id/modifier" element={<RessourceEditPage />} />
+
+        {/* Consultation (Magasinier) */}
+        <Route path="/mes-taches" element={<MesTachesPage />} />
+        <Route path="/mon-journal" element={<MonJournalPage />} />
+
+        {/* ✅ NOUVEAU : journal personnel (Agent de Saisie) */}
+        <Route path="/mon-journal-agent" element={<MonJournalAgentPage />} />
+
+        <Route path="/mon-profil" element={<MonProfilPage />} />
+
         {/* Journal */}
         <Route path="/journal" element={<JournalPage />} />
 
         {/* Statistiques */}
-<Route path="/statistiques" element={<StatistiquesPage />} />
-
-        {/* Ajoute ici les routes du module statistiques au même format, une fois ses pages prêtes. */}
+        <Route path="/statistiques" element={<StatistiquesPage />} />
       </Route>
 
-      {/* ============================= */}
-      {/* PAGE D'ACCUEIL : toujours le login en premier */}
-      {/* ============================= */}
-
+      {/* Redirection par défaut */}
       <Route path="/" element={<Navigate to="/login" replace />} />
 
-      {/* ============================= */}
-      {/* PAGE 404                      */}
-      {/* ============================= */}
-
+      {/* Page 404 */}
       <Route
         path="*"
         element={
@@ -166,7 +205,6 @@ const AppRouter = () => {
           </div>
         }
       />
-
     </Routes>
   );
 };

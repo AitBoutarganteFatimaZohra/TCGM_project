@@ -12,6 +12,18 @@ import {
 
 const AuthContext = createContext(null);
 
+// ⚠️ Le backend renvoie l'identifiant utilisateur sous la clé `userId`
+// (voir AuthResponse.java), pas `id`. On normalise ici une bonne fois
+// pour toutes pour que tout le reste du frontend puisse utiliser
+// `user.id` de façon fiable (comparaisons de propriétaire, affectations...).
+const normalizeUser = (data) => {
+  if (!data) return null;
+  return {
+    ...data,
+    id: data.id ?? data.userId ?? null,
+  };
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -28,7 +40,7 @@ export const AuthProvider = ({ children }) => {
         const savedUser = localStorage.getItem('user');
 
         if (token && savedUser) {
-          const parsedUser = JSON.parse(savedUser);
+          const parsedUser = normalizeUser(JSON.parse(savedUser));
 
           setUser(parsedUser);
           setIsAuthenticated(true);
@@ -84,17 +96,21 @@ export const AuthProvider = ({ children }) => {
         );
       }
 
+      // On stocke la réponse brute du backend en localStorage (inchangé),
+      // mais on normalise l'objet utilisé dans le contexte React pour
+      // garantir un champ `id` fiable partout dans l'app.
       localStorage.setItem(
         'user',
         JSON.stringify(data)
       );
 
-      setUser(data);
+      const normalizedUser = normalizeUser(data);
+      setUser(normalizedUser);
       setIsAuthenticated(true);
 
       return {
         success: true,
-        data,
+        data: normalizedUser,
       };
     } catch (error) {
       console.error(

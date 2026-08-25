@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { getChantiers } from '../api/chantierApi';
+import useAuth from '../hooks/useAuth';
+import { getChantiers, getMySites } from '../api/chantierApi';
 import { getOuvriers } from '../api/ouvrierApi';
-import { getTaches } from '../api/tacheApi';
+import { getTachesBySite } from '../api/tacheApi';
 import { createDossierPointage, addLignePointage } from '../api/pointageApi';
+import { buildHalfDayTimes } from '../utils/pointageFormat';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -13,25 +15,23 @@ const newRow = () => ({
   ouvrierId: '',
   tacheId: '',
   halfDay: false,
+  halfDaySlot: 'MATIN',
   startTime: '',
   endTime: '',
   notes: '',
-  status: null, // null | 'success' | 'error'
+  status: null,
   errorMsg: null,
 });
 
-/**
- * Formulaire de création d'un pointage en une seule page :
- * chantier + date + notes, PLUS un tableau dynamique d'ouvriers.
- *
- * Le backend n'ayant pas d'endpoint "bulk", la soumission :
- *  1) crée le dossier (POST /pointage/dossiers)
- *  2) ajoute chaque ligne remplie séquentiellement (POST /pointage/dossiers/{id}/lignes)
- * Le dossier reste "verrouillé" (chantier/date non modifiables) une fois créé,
- * et on peut relancer uniquement les lignes en échec sans dupliquer les lignes réussies.
- */
+const isTimeRangeValid = (start, end) => {
+  if (!start || !end) return true;
+  return new Date(start) < new Date(end);
+};
+
 const PointageCreatePage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAgentSaisie = user?.role === 'AGENT_SAISIE';
 
   const [chantiers, setChantiers] = useState([]);
   const [ouvriers, setOuvriers] = useState([]);
@@ -45,16 +45,65 @@ const PointageCreatePage = () => {
   const [formError, setFormError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [dossierId, setDossierId] = useState(null);
+  const [chantiersLoading, setChantiersLoading] = useState(true);
 
   useEffect(() => {
-    getChantiers().then((d) => setChantiers(d.content || d)).catch(() => {});
+    setChantiersLoading(true);
+    if (isAgentSaisie) {
+      getMySites()
+        .then((data) => {
+          const sites = data.content || data || [];
+          setChantiers(sites);
+          if (sites.length > 0) {
+            setSiteId(String(sites[0].id));
+          }
+        })
+        .catch(() => {})
+        .finally(() => setChantiersLoading(false));
+    } else {
+      getChantiers()
+        .then((d) => setChantiers(d.content || d))
+        .catch(() => {})
+        .finally(() => setChantiersLoading(false));
+    }
+  }, [isAgentSaisie]);
+
+  useEffect(() => {
     getOuvriers().then((d) => setOuvriers(d.content || d)).catch(() => {});
-    getTaches().then((d) => setTaches(d.content || d)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!siteId) {
+      setTaches([]);
+      return;
+    }
+    getTachesBySite(siteId).then(setTaches).catch(() => setTaches([]));
+  }, [siteId]);
+
+  const handleSiteChange = (e) => {
+    setSiteId(e.target.value);
+    setRows([newRow()]);
+  };
 
   const updateRow = (rowId, field, value) => {
     setRows((prev) =>
-      prev.map((r) => (r.rowId === rowId ? { ...r, [field]: value, status: null, errorMsg: null } : r))
+      prev.map((r) => {
+        if (r.rowId !== rowId) return r;
+        const updated = { ...r, [field]: value, status: null, errorMsg: null };
+        if (field === 'halfDay' || field === 'halfDaySlot') {
+          const halfDayOn = field === 'halfDay' ? value : r.halfDay;
+          const slot = field === 'halfDaySlot' ? value : r.halfDaySlot;
+          if (halfDayOn && date) {
+            const times = buildHalfDayTimes(date, slot);
+            updated.startTime = times.startTime;
+            updated.endTime = times.endTime;
+          } else if (field === 'halfDay' && !value) {
+            updated.startTime = '';
+            updated.endTime = '';
+          }
+        }
+        return updated;
+      })
     );
   };
 
@@ -65,13 +114,14 @@ const PointageCreatePage = () => {
     ouvrierId: Number(r.ouvrierId),
     tacheId: Number(r.tacheId),
     halfDay: r.halfDay,
-    startTime: r.halfDay ? null : r.startTime,
-    endTime: r.halfDay ? null : r.endTime,
+    startTime: r.startTime,
+    endTime: r.endTime,
     notes: r.notes || null,
   });
 
-  const rowIsFilled = (r) => r.ouvrierId && r.tacheId && (r.halfDay || (r.startTime && r.endTime));
+  const rowIsFilled = (r) => r.ouvrierId && r.tacheId && r.startTime && r.endTime;
   const rowIsTouched = (r) => r.ouvrierId || r.tacheId;
+  const rowTimeInvalid = (r) => r.startTime && r.endTime && !isTimeRangeValid(r.startTime, r.endTime);
 
   const submitLines = async (targetDossierId, targetRows) => {
     for (const r of targetRows) {
@@ -109,6 +159,12 @@ const PointageCreatePage = () => {
       return;
     }
 
+    const invalidTimeRows = rows.filter((r) => rowIsFilled(r) && rowTimeInvalid(r));
+    if (invalidTimeRows.length > 0) {
+      setFormError("L'heure de début doit être antérieure à l'heure de fin pour chaque ouvrier.");
+      return;
+    }
+
     const validRows = rows.filter(rowIsFilled);
 
     setSubmitting(true);
@@ -137,13 +193,15 @@ const PointageCreatePage = () => {
   const hasErrors = rows.some((r) => r.status === 'error');
   const allDone = dossierId && filledRows.length > 0 && filledRows.every((r) => r.status === 'success');
 
+  const siteSelectDisabled = !!dossierId || isAgentSaisie;
+
   return (
     <div className="pointage-create-page">
       <div className="page-header">
         <h1>+ Nouveau pointage</h1>
       </div>
 
-      <form className="chantier-form" onSubmit={handleSubmit} style={{ maxWidth: 900 }}>
+      <form className="chantier-form" onSubmit={handleSubmit} style={{ maxWidth: 950 }}>
         {formError && <div className="error-banner">{formError}</div>}
 
         {dossierId && !hasErrors && !allDone && (
@@ -166,14 +224,25 @@ const PointageCreatePage = () => {
         <div className="form-row">
           <div className="form-group">
             <label>Chantier *</label>
-            <select value={siteId} onChange={(e) => setSiteId(e.target.value)} disabled={!!dossierId} required>
-              <option value="">Sélectionner un chantier</option>
-              {chantiers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} {c.reference ? `— ${c.reference}` : ''}
-                </option>
-              ))}
+            <select value={siteId} onChange={handleSiteChange} disabled={siteSelectDisabled} required>
+              {chantiersLoading ? (
+                <option value="">Chargement...</option>
+              ) : chantiers.length === 0 ? (
+                <option value="">Aucun chantier assigné</option>
+              ) : (
+                <>
+                  {!isAgentSaisie && <option value="">Sélectionner un chantier</option>}
+                  {chantiers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.reference ? `— ${c.reference}` : ''}
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
+            {isAgentSaisie && chantiers.length > 0 && (
+              <small style={{ color: 'var(--tcgm-gray)' }}>Chantier assigné automatiquement</small>
+            )}
           </div>
           <div className="form-group">
             <label>Date *</label>
@@ -193,7 +262,7 @@ const PointageCreatePage = () => {
 
         <div className="page-header" style={{ marginBottom: 8, marginTop: 8 }}>
           <h1 style={{ fontSize: 16 }}>Ouvriers pointés</h1>
-          <button type="button" className="btn-ghost" onClick={addRow}>
+          <button type="button" className="btn-ghost" onClick={addRow} disabled={!siteId}>
             + Ajouter un ouvrier
           </button>
         </div>
@@ -205,6 +274,7 @@ const PointageCreatePage = () => {
                 <th>Ouvrier</th>
                 <th>Tâche</th>
                 <th>Demi-j.</th>
+                <th>Créneau</th>
                 <th>Début</th>
                 <th>Fin</th>
                 <th>Notes</th>
@@ -212,89 +282,107 @@ const PointageCreatePage = () => {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.rowId}>
-                  <td>
-                    <select
-                      value={r.ouvrierId}
-                      onChange={(e) => updateRow(r.rowId, 'ouvrierId', e.target.value)}
-                      disabled={r.status === 'success'}
-                    >
-                      <option value="">—</option>
-                      {ouvriers.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.firstName} {o.lastName}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <select
-                      value={r.tacheId}
-                      onChange={(e) => updateRow(r.rowId, 'tacheId', e.target.value)}
-                      disabled={r.status === 'success'}
-                    >
-                      <option value="">—</option>
-                      {taches.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.title}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={r.halfDay}
-                      onChange={(e) => updateRow(r.rowId, 'halfDay', e.target.checked)}
-                      disabled={r.status === 'success'}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="datetime-local"
-                      value={r.startTime}
-                      onChange={(e) => updateRow(r.rowId, 'startTime', e.target.value)}
-                      disabled={r.halfDay || r.status === 'success'}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="datetime-local"
-                      value={r.endTime}
-                      onChange={(e) => updateRow(r.rowId, 'endTime', e.target.value)}
-                      disabled={r.halfDay || r.status === 'success'}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="text"
-                      value={r.notes}
-                      onChange={(e) => updateRow(r.rowId, 'notes', e.target.value)}
-                      disabled={r.status === 'success'}
-                      style={{
-                        width: '100%',
-                        padding: '6px 8px',
-                        border: '1px solid var(--tcgm-gray-light)',
-                        borderRadius: 6,
-                      }}
-                    />
-                  </td>
-                  <td className="col-actions">
-                    {r.status === 'success' && <span className="badge badge--success">✓</span>}
-                    {r.status === 'error' && (
-                      <span className="badge badge--danger" title={r.errorMsg}>
-                        ✕
-                      </span>
-                    )}
-                    {r.status !== 'success' && rows.length > 1 && (
-                      <button type="button" className="icon-btn icon-btn--danger" onClick={() => removeRow(r.rowId)}>
-                        🗑
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const timeInvalid = rowTimeInvalid(r);
+                return (
+                  <tr key={r.rowId}>
+                    <td>
+                      <select
+                        value={r.ouvrierId}
+                        onChange={(e) => updateRow(r.rowId, 'ouvrierId', e.target.value)}
+                        disabled={r.status === 'success'}
+                      >
+                        <option value="">—</option>
+                        {ouvriers.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.firstName} {o.lastName}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        value={r.tacheId}
+                        onChange={(e) => updateRow(r.rowId, 'tacheId', e.target.value)}
+                        disabled={r.status === 'success' || taches.length === 0}
+                      >
+                        <option value="">{taches.length === 0 ? 'Aucune tâche' : '—'}</option>
+                        {taches.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.title}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={r.halfDay}
+                        onChange={(e) => updateRow(r.rowId, 'halfDay', e.target.checked)}
+                        disabled={r.status === 'success'}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        value={r.halfDaySlot}
+                        onChange={(e) => updateRow(r.rowId, 'halfDaySlot', e.target.value)}
+                        disabled={!r.halfDay || r.status === 'success'}
+                      >
+                        <option value="MATIN">Matin</option>
+                        <option value="APRES_MIDI">Après-midi</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="time"
+                        value={r.startTime ? r.startTime.slice(11, 16) : ''}
+                        onChange={(e) => updateRow(r.rowId, 'startTime', date ? `${date}T${e.target.value}` : '')}
+                        disabled={r.halfDay || r.status === 'success'}
+                        style={timeInvalid ? { borderColor: '#dc2626' } : undefined}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="time"
+                        value={r.endTime ? r.endTime.slice(11, 16) : ''}
+                        onChange={(e) => updateRow(r.rowId, 'endTime', date ? `${date}T${e.target.value}` : '')}
+                        disabled={r.halfDay || r.status === 'success'}
+                        style={timeInvalid ? { borderColor: '#dc2626' } : undefined}
+                      />
+                      {timeInvalid && (
+                        <div style={{ color: '#dc2626', fontSize: 12 }}>Fin doit être après le début</div>
+                      )}
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        value={r.notes}
+                        onChange={(e) => updateRow(r.rowId, 'notes', e.target.value)}
+                        disabled={r.status === 'success'}
+                        style={{
+                          width: '100%',
+                          padding: '6px 8px',
+                          border: '1px solid var(--tcgm-gray-light)',
+                          borderRadius: 6,
+                        }}
+                      />
+                    </td>
+                    <td className="col-actions">
+                      {r.status === 'success' && <span className="badge badge--success">✓</span>}
+                      {r.status === 'error' && (
+                        <span className="badge badge--danger" title={r.errorMsg}>
+                          ✕
+                        </span>
+                      )}
+                      {r.status !== 'success' && rows.length > 1 && (
+                        <button type="button" className="icon-btn icon-btn--danger" onClick={() => removeRow(r.rowId)}>
+                          🗑
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

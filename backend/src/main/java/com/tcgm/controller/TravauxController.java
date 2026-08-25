@@ -26,13 +26,13 @@ public class TravauxController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'AGENT_SAISIE')")
     public ResponseEntity<TravauxResponse> getTravauxById(@PathVariable Long id) {
         return ResponseEntity.ok(travauxService.getTravauxById(id));
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'AGENT_SAISIE')")
     public ResponseEntity<Page<TravauxResponse>> getAllTravaux(
             @RequestParam(required = false) Long chantierId,
             @RequestParam(required = false) String statut,
@@ -61,8 +61,14 @@ public class TravauxController {
         return ResponseEntity.ok(travauxService.updateStatut(id, statut));
     }
 
+    /**
+     * 🔧 CORRIGÉ : AGENT_SAISIE ajouté — appelé par getTachesBySite() côté
+     * frontend (première étape : récupérer les travaux du chantier, avant
+     * d'aller chercher leurs tâches). Sans ce rôle, 403 silencieux
+     * → dropdown "Tâche" toujours vide, même après avoir corrigé /taches.
+     */
     @GetMapping("/chantier/{chantierId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'AGENT_SAISIE')")
     public ResponseEntity<Page<TravauxResponse>> getTravauxByChantier(@PathVariable Long chantierId,
                                                                        Pageable pageable) {
         return ResponseEntity.ok(travauxService.getTravauxByChantier(chantierId, pageable));

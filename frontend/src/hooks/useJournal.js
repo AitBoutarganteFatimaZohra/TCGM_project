@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getJournal, getJournalById } from '../api/journalApi';
+import {
+  getJournal,
+  getJournalById,
+  validateJournalEntry,
+  rejectJournalEntry,
+  exportJournal as exportJournalApi,
+} from '../api/journalApi';
 
 const useJournal = () => {
   const [journal, setJournal] = useState([]);
@@ -12,7 +18,6 @@ const useJournal = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Le journal est en lecture seule : uniquement fetch, pas de create/update/delete
   const fetchJournal = useCallback(async (params = {}) => {
     setLoading(true);
     setError(null);
@@ -47,6 +52,51 @@ const useJournal = () => {
     }
   };
 
+  const validateEntry = async (id) => {
+    setError(null);
+    try {
+      const updated = await validateJournalEntry(id);
+      setJournal((prev) => prev.map((entry) => (entry.id === id ? updated : entry)));
+      return updated;
+    } catch (err) {
+      setError(err.response?.data?.message || "Erreur lors de la validation de l'entrée");
+      throw err;
+    }
+  };
+
+  const rejectEntry = async (id) => {
+    setError(null);
+    try {
+      const updated = await rejectJournalEntry(id);
+      setJournal((prev) => prev.map((entry) => (entry.id === id ? updated : entry)));
+      return updated;
+    } catch (err) {
+      setError(err.response?.data?.message || "Erreur lors du rejet de l'entrée");
+      throw err;
+    }
+  };
+
+  // ⚠️ NOUVEAU : télécharge le fichier généré côté backend.
+  const exportJournal = async (format, params = {}) => {
+    setError(null);
+    try {
+      const blobData = await exportJournalApi(format, params);
+      const extension = format === 'excel' ? 'xlsx' : 'pdf';
+      const blob = new Blob([blobData]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `journal_tcgm_${new Date().toISOString().slice(0, 10)}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError("Erreur lors de l'export du journal");
+      throw err;
+    }
+  };
+
   useEffect(() => {
     fetchJournal();
   }, [fetchJournal]);
@@ -58,6 +108,9 @@ const useJournal = () => {
     error,
     fetchJournal,
     fetchJournalById,
+    validateEntry,
+    rejectEntry,
+    exportJournal,
   };
 };
 

@@ -54,19 +54,16 @@ public class PointageServiceImpl implements PointageService {
     @Override
     @Transactional
     public DossierPointageResponse createDossierPointage(DossierPointageRequest request) {
-        log.info("Création d'un dossier de pointage pour le site {} à la date {}", 
+        log.info("Création d'un dossier de pointage pour le site {} à la date {}",
             request.getSiteId(), request.getDate());
 
-        // Vérifier que le site existe
         Site site = siteRepository.findById(request.getSiteId())
             .orElseThrow(() -> new ResourceNotFoundException("Site", request.getSiteId()));
 
-        // Vérifier si un dossier existe déjà pour cette date et ce site
         if (dossierRepository.existsBySiteIdAndDate(request.getSiteId(), request.getDate())) {
             throw new BadRequestException("Un dossier de pointage existe déjà pour cette date et ce site");
         }
 
-        // Récupérer l'utilisateur actuel
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User createdBy = userRepository.findByEmail(email)
             .orElseThrow(() -> new ResourceNotFoundException("Utilisateur", "email", email));
@@ -74,7 +71,7 @@ public class PointageServiceImpl implements PointageService {
         DossierPointage dossier = pointageMapper.toDossierEntity(request);
         dossier.setSite(site);
         dossier.setCreatedBy(createdBy);
-        
+
         dossier = dossierRepository.save(dossier);
 
         journalService.logAction(
@@ -91,7 +88,6 @@ public class PointageServiceImpl implements PointageService {
 
     @Override
     public DossierPointageResponse getDossierPointageById(Long id) {
-        log.debug("Récupération du dossier de pointage ID: {}", id);
         DossierPointage dossier = dossierRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", id));
         return pointageMapper.toDossierResponse(dossier);
@@ -99,8 +95,6 @@ public class PointageServiceImpl implements PointageService {
 
     @Override
     public Page<DossierPointageResponse> getAllDossiersPointage(Long siteId, String date, String status, Pageable pageable) {
-        log.debug("Récupération de tous les dossiers de pointage");
-
         StatutPointage statut = null;
         if (status != null) {
             try {
@@ -110,15 +104,16 @@ public class PointageServiceImpl implements PointageService {
             }
         }
 
-        LocalDate dateFilter = null;
+        // La date est validée ici (format), mais pas encore exploitée dans une
+        // requête dédiée tant qu'aucune méthode repository site+date paginée
+        // n'existe (comme dans le code d'origine).
         if (date != null) {
-            dateFilter = LocalDate.parse(date);
+            LocalDate.parse(date);
         }
 
         Page<DossierPointage> dossiers;
-        if (siteId != null && dateFilter != null) {
-            // TODO: Ajouter une méthode de recherche par site et date
-            dossiers = dossierRepository.findBySiteId(siteId, pageable);
+        if (siteId != null && statut != null) {
+            dossiers = dossierRepository.findBySiteIdAndStatus(siteId, statut, pageable);
         } else if (siteId != null) {
             dossiers = dossierRepository.findBySiteId(siteId, pageable);
         } else if (statut != null) {
@@ -130,6 +125,18 @@ public class PointageServiceImpl implements PointageService {
         return dossiers.map(pointageMapper::toDossierResponse);
     }
 
+    /**
+     * Un dossier n'est modifiable (édition, ajout/retrait de ligne, suppression)
+     * que tant qu'il est en "EN_ATTENTE". Dès qu'il est soumis, validé ou
+     * rejeté, il est verrouillé (§5 et §7 du cahier des charges).
+     */
+    private void verifierModifiable(DossierPointage dossier) {
+        if (dossier.getStatus() != StatutPointage.EN_ATTENTE) {
+            throw new BadRequestException(
+                "Ce dossier de pointage ne peut plus être modifié (statut actuel : " + dossier.getStatus() + ")");
+        }
+    }
+
     @Override
     @Transactional
     public DossierPointageResponse updateDossierPointage(Long id, DossierPointageRequest request) {
@@ -138,20 +145,10 @@ public class PointageServiceImpl implements PointageService {
         DossierPointage dossier = dossierRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", id));
 
-        // Vérifier si le dossier n'est pas déjà validé
-        if (dossier.getStatus() == StatutPointage.VALIDE) {
-            throw new BadRequestException("Impossible de modifier un dossier de pointage validé");
-        }
+        verifierModifiable(dossier);
 
-        if (request.getDate() != null) {
-            // Vérifier si un autre dossier existe pour cette date
-            if (!dossier.getDate().equals(request.getDate()) &&
-                dossierRepository.existsBySiteIdAndDate(dossier.getSite().getId(), request.getDate())) {
-                throw new BadRequestException("Un dossier de pointage existe déjà pour cette date");
-            }
-            dossier.setDate(request.getDate());
-        }
-
+        // La date ne peut pas être changée une fois le dossier créé (§5) —
+        // seules les notes sont librement modifiables.
         if (request.getNotes() != null) {
             dossier.setNotes(request.getNotes());
         }
@@ -178,10 +175,7 @@ public class PointageServiceImpl implements PointageService {
         DossierPointage dossier = dossierRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", id));
 
-        // Vérifier si le dossier n'est pas déjà validé
-        if (dossier.getStatus() == StatutPointage.VALIDE) {
-            throw new BadRequestException("Impossible de supprimer un dossier de pointage validé");
-        }
+        verifierModifiable(dossier);
 
         journalService.logAction(
             TypeAction.SUPPRESSION,
@@ -203,18 +197,22 @@ public class PointageServiceImpl implements PointageService {
         DossierPointage dossier = dossierRepository.findById(dossierId)
             .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", dossierId));
 
-        // Vérifier si le dossier n'est pas déjà validé
-        if (dossier.getStatus() == StatutPointage.VALIDE) {
-            throw new BadRequestException("Impossible d'ajouter une ligne à un dossier de pointage validé");
-        }
+        verifierModifiable(dossier);
 
-        // Vérifier que l'ouvrier existe
         Ouvrier ouvrier = ouvrierRepository.findById(request.getOuvrierId())
             .orElseThrow(() -> new ResourceNotFoundException("Ouvrier", request.getOuvrierId()));
 
-        // Vérifier que la tâche existe
         Tache tache = tacheRepository.findById(request.getTacheId())
             .orElseThrow(() -> new ResourceNotFoundException("Tâche", request.getTacheId()));
+
+        if (Boolean.FALSE.equals(request.getHalfDay()) || request.getHalfDay() == null) {
+            if (request.getStartTime() == null || request.getEndTime() == null) {
+                throw new BadRequestException("L'heure de début et de fin sont obligatoires (ou cochez demi-journée)");
+            }
+            if (!request.getStartTime().isBefore(request.getEndTime())) {
+                throw new BadRequestException("L'heure de début doit être antérieure à l'heure de fin");
+            }
+        }
 
         LignePointage ligne = pointageMapper.toLigneEntity(request);
         ligne.setDossier(dossier);
@@ -222,6 +220,15 @@ public class PointageServiceImpl implements PointageService {
         ligne.setTache(tache);
 
         ligne = ligneRepository.save(ligne);
+
+        journalService.logAction(
+            TypeAction.MODIFICATION,
+            "POINTAGE",
+            dossier.getId(),
+            "Ajout de l'ouvrier " + ouvrier.getFirstName() + " " + ouvrier.getLastName() + " au pointage du "
+                + dossier.getDate() + " (site " + dossier.getSite().getName() + ")",
+            null
+        );
 
         log.info("Ligne de pointage ajoutée avec succès");
         return pointageMapper.toLigneResponse(ligne);
@@ -236,12 +243,53 @@ public class PointageServiceImpl implements PointageService {
             .orElseThrow(() -> new ResourceNotFoundException("Ligne de pointage", ligneId));
 
         DossierPointage dossier = ligne.getDossier();
-        if (dossier.getStatus() == StatutPointage.VALIDE) {
-            throw new BadRequestException("Impossible de supprimer une ligne d'un dossier de pointage validé");
-        }
+        verifierModifiable(dossier);
+
+        journalService.logAction(
+            TypeAction.MODIFICATION,
+            "POINTAGE",
+            dossier.getId(),
+            "Retrait de l'ouvrier " + ligne.getOuvrier().getFirstName() + " " + ligne.getOuvrier().getLastName()
+                + " du pointage du " + dossier.getDate(),
+            null
+        );
 
         ligneRepository.delete(ligne);
         log.info("Ligne de pointage supprimée avec succès");
+    }
+
+    @Override
+    @Transactional
+    public DossierPointageResponse soumettreDossierPointage(Long id) {
+        log.info("Soumission pour validation du dossier de pointage ID: {}", id);
+
+        DossierPointage dossier = dossierRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", id));
+
+        if (dossier.getStatus() != StatutPointage.EN_ATTENTE) {
+            throw new BadRequestException(
+                "Seul un dossier \"En attente\" peut être soumis pour validation (statut actuel : "
+                    + dossier.getStatus() + ")");
+        }
+
+        if (dossier.getLignes() == null || dossier.getLignes().isEmpty()) {
+            throw new BadRequestException("Impossible de soumettre un pointage sans aucun ouvrier");
+        }
+
+        dossier.setStatus(StatutPointage.EN_ATTENTE_VALIDATION);
+        dossier = dossierRepository.save(dossier);
+
+        journalService.logAction(
+            TypeAction.SOUMISSION,
+            "POINTAGE",
+            dossier.getId(),
+            "Soumission pour validation du pointage du " + dossier.getDate()
+                + " (site " + dossier.getSite().getName() + ")",
+            null
+        );
+
+        log.info("Dossier de pointage soumis pour validation");
+        return pointageMapper.toDossierResponse(dossier);
     }
 
     @Override
@@ -252,11 +300,12 @@ public class PointageServiceImpl implements PointageService {
         DossierPointage dossier = dossierRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", id));
 
-        if (dossier.getStatus() == StatutPointage.VALIDE) {
-            throw new BadRequestException("Ce dossier de pointage est déjà validé");
+        if (dossier.getStatus() != StatutPointage.EN_ATTENTE_VALIDATION) {
+            throw new BadRequestException(
+                "Seul un dossier \"En attente de validation\" peut être validé (statut actuel : "
+                    + dossier.getStatus() + ")");
         }
 
-        // Récupérer l'utilisateur actuel
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User validatedBy = userRepository.findByEmail(email)
             .orElseThrow(() -> new ResourceNotFoundException("Utilisateur", "email", email));
@@ -264,9 +313,10 @@ public class PointageServiceImpl implements PointageService {
         dossier.setStatus(StatutPointage.VALIDE);
         dossier.setValidatedBy(validatedBy);
         dossier.setValidatedAt(LocalDateTime.now());
-        
-        if (request.getNotes() != null) {
-            dossier.setNotes(dossier.getNotes() + "\nValidation: " + request.getNotes());
+
+        if (request.getNotes() != null && !request.getNotes().isBlank()) {
+            String notes = dossier.getNotes() != null ? dossier.getNotes() : "";
+            dossier.setNotes(notes + "\nValidation: " + request.getNotes());
         }
 
         dossier = dossierRepository.save(dossier);
@@ -275,8 +325,8 @@ public class PointageServiceImpl implements PointageService {
             TypeAction.VALIDATION,
             "POINTAGE",
             dossier.getId(),
-            "Validation du dossier de pointage du site " + dossier.getSite().getName() + 
-            " par " + validatedBy.getEmail(),
+            "Validation du dossier de pointage du site " + dossier.getSite().getName()
+                + " par " + validatedBy.getEmail(),
             null
         );
 
@@ -292,14 +342,17 @@ public class PointageServiceImpl implements PointageService {
         DossierPointage dossier = dossierRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", id));
 
-        if (dossier.getStatus() == StatutPointage.VALIDE) {
-            throw new BadRequestException("Ce dossier de pointage est déjà validé");
+        if (dossier.getStatus() != StatutPointage.EN_ATTENTE_VALIDATION) {
+            throw new BadRequestException(
+                "Seul un dossier \"En attente de validation\" peut être rejeté (statut actuel : "
+                    + dossier.getStatus() + ")");
         }
 
         dossier.setStatus(StatutPointage.REJETE);
-        
-        if (request.getMotifRejet() != null) {
-            dossier.setNotes(dossier.getNotes() + "\nMotif du rejet: " + request.getMotifRejet());
+
+        if (request.getMotifRejet() != null && !request.getMotifRejet().isBlank()) {
+            String notes = dossier.getNotes() != null ? dossier.getNotes() : "";
+            dossier.setNotes(notes + "\nMotif du rejet: " + request.getMotifRejet());
         }
 
         dossier = dossierRepository.save(dossier);
@@ -318,8 +371,6 @@ public class PointageServiceImpl implements PointageService {
 
     @Override
     public DossierPointageResponse getTodayPointage(Long siteId) {
-        log.debug("Récupération du pointage du jour pour le site {}", siteId);
-
         LocalDate today = LocalDate.now();
         DossierPointage dossier = dossierRepository.findBySiteIdAndDate(siteId, today)
             .orElseThrow(() -> new ResourceNotFoundException("Aucun pointage trouvé pour aujourd'hui"));
@@ -329,18 +380,18 @@ public class PointageServiceImpl implements PointageService {
 
     @Override
     public Map<String, Object> getPointageStatistiques(Long siteId) {
-        log.debug("Récupération des statistiques de pointage pour le site {}", siteId);
-
         Map<String, Object> stats = new HashMap<>();
-        
+
         long totalDossiers = dossierRepository.findBySiteId(siteId, Pageable.unpaged()).getTotalElements();
         long dossiersValides = dossierRepository.findBySiteIdAndStatus(siteId, StatutPointage.VALIDE, Pageable.unpaged()).getTotalElements();
         long dossiersEnAttente = dossierRepository.findBySiteIdAndStatus(siteId, StatutPointage.EN_ATTENTE, Pageable.unpaged()).getTotalElements();
+        long dossiersEnAttenteValidation = dossierRepository.findBySiteIdAndStatus(siteId, StatutPointage.EN_ATTENTE_VALIDATION, Pageable.unpaged()).getTotalElements();
         long dossiersRejetes = dossierRepository.findBySiteIdAndStatus(siteId, StatutPointage.REJETE, Pageable.unpaged()).getTotalElements();
 
         stats.put("totalDossiers", totalDossiers);
         stats.put("dossiersValides", dossiersValides);
         stats.put("dossiersEnAttente", dossiersEnAttente);
+        stats.put("dossiersEnAttenteValidation", dossiersEnAttenteValidation);
         stats.put("dossiersRejetes", dossiersRejetes);
         stats.put("tauxValidation", totalDossiers > 0 ? (dossiersValides * 100.0 / totalDossiers) : 0);
 

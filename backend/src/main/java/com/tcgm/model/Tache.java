@@ -34,7 +34,7 @@ public class Tache {
     private LocalDateTime completedDate;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 20)
+    @Column(length = 25)
     private StatutTache status = StatutTache.PLANIFIEE;
 
     private Integer priority = 1;
@@ -46,7 +46,41 @@ public class Tache {
     private LocalDateTime updatedAt;
 
     // =========================================================
-    // RELATIONS MODIFIÉES
+    // CIRCUIT DE VALIDATION (Chef de Chantier -> Chef de Projet)
+    // =========================================================
+
+    /**
+     * Statut dans lequel se trouvait la tâche avant la soumission d'une
+     * demande de validation. Utilisé pour restaurer l'état d'origine en
+     * cas de rejet. Null tant qu'aucune demande n'est en attente.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "previous_status", length = 25)
+    private StatutTache previousStatus;
+
+    /**
+     * Statut cible proposé par le Chef de Chantier, en attente de
+     * validation par le Chef de Projet. Null tant qu'aucune demande n'est
+     * en attente.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "proposed_status", length = 25)
+    private StatutTache proposedStatus;
+
+    /**
+     * Nouvelle date prévue proposée (optionnelle) en attente de validation.
+     */
+    @Column(name = "proposed_planned_date")
+    private LocalDateTime proposedPlannedDate;
+
+    /**
+     * Motif du dernier rejet (facultatif), conservé pour affichage/traçabilité.
+     */
+    @Column(name = "rejection_reason", columnDefinition = "TEXT")
+    private String rejectionReason;
+
+    // =========================================================
+    // RELATIONS
     // =========================================================
 
     @ManyToOne(fetch = FetchType.LAZY)

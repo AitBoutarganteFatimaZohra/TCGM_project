@@ -20,18 +20,24 @@ public interface TacheMapper {
     // ENTITY → RESPONSE
     // =========================================================
 
-    // MODIFIÉ : site → travaux
     @Mapping(target = "site", expression = "java(mapTravauxBrief(tache))")
     @Mapping(target = "ouvriers", expression = "java(mapOuvriersBrief(tache.getAffectationsOuvriers()))")
     @Mapping(target = "totalOuvriers", expression = "java(tache.getAffectationsOuvriers() != null ? tache.getAffectationsOuvriers().size() : 0)")
     @Mapping(target = "status", source = "status")
+    @Mapping(target = "previousStatus", source = "previousStatus")
+    @Mapping(target = "proposedStatus", source = "proposedStatus")
+    @Mapping(target = "proposedPlannedDate", source = "proposedPlannedDate")
+    @Mapping(target = "rejectionReason", source = "rejectionReason")
     TacheResponse toResponse(Tache tache);
 
-    // MODIFIÉ : site → travaux
     @Mapping(target = "site", expression = "java(mapTravauxDetail(tache))")
     @Mapping(target = "ouvriers", expression = "java(mapOuvriersDetail(tache.getAffectationsOuvriers()))")
     @Mapping(target = "totalOuvriers", expression = "java(tache.getAffectationsOuvriers() != null ? tache.getAffectationsOuvriers().size() : 0)")
     @Mapping(target = "totalHeures", expression = "java(0)")
+    @Mapping(target = "previousStatus", source = "previousStatus")
+    @Mapping(target = "proposedStatus", source = "proposedStatus")
+    @Mapping(target = "proposedPlannedDate", source = "proposedPlannedDate")
+    @Mapping(target = "rejectionReason", source = "rejectionReason")
     TacheDetailResponse toDetailResponse(Tache tache);
 
     // =========================================================
@@ -39,10 +45,13 @@ public interface TacheMapper {
     // =========================================================
 
     @Mapping(target = "id", ignore = true)
-    // MODIFIÉ : site → travaux
     @Mapping(target = "travaux", ignore = true)
     @Mapping(target = "status", expression = "java(com.tcgm.model.enums.StatutTache.valueOf(request.getStatus()))")
     @Mapping(target = "completedDate", ignore = true)
+    @Mapping(target = "previousStatus", ignore = true)
+    @Mapping(target = "proposedStatus", ignore = true)
+    @Mapping(target = "proposedPlannedDate", ignore = true)
+    @Mapping(target = "rejectionReason", ignore = true)
     @Mapping(target = "affectationsOuvriers", ignore = true)
     Tache toEntity(TacheCreateRequest request);
 
@@ -51,9 +60,12 @@ public interface TacheMapper {
     // =========================================================
 
     @Mapping(target = "id", ignore = true)
-    // MODIFIÉ : site → travaux
     @Mapping(target = "travaux", ignore = true)
     @Mapping(target = "completedDate", ignore = true)
+    @Mapping(target = "previousStatus", ignore = true)
+    @Mapping(target = "proposedStatus", ignore = true)
+    @Mapping(target = "proposedPlannedDate", ignore = true)
+    @Mapping(target = "rejectionReason", ignore = true)
     @Mapping(target = "affectationsOuvriers", ignore = true)
     void updateEntity(@MappingTarget Tache tache, TacheUpdateRequest request);
 
@@ -65,10 +77,9 @@ public interface TacheMapper {
     List<TacheDetailResponse> toDetailResponseList(List<Tache> taches);
 
     // =========================================================
-    // MÉTHODES UTILITAIRES (MODIFIÉES)
+    // MÉTHODES UTILITAIRES
     // =========================================================
 
-    // MODIFIÉ : mapSiteBrief → mapTravauxBrief
     default TacheResponse.SiteBrief mapTravauxBrief(Tache tache) {
         if (tache.getTravaux() == null) return null;
         if (tache.getTravaux().getChantier() == null) return null;
@@ -97,7 +108,6 @@ public interface TacheMapper {
             .collect(java.util.stream.Collectors.toList());
     }
 
-    // MODIFIÉ : mapSiteDetail → mapTravauxDetail
     default TacheDetailResponse.SiteBrief mapTravauxDetail(Tache tache) {
         if (tache.getTravaux() == null) return null;
         if (tache.getTravaux().getChantier() == null) return null;

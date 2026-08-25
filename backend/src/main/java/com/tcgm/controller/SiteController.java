@@ -5,6 +5,7 @@ import com.tcgm.dto.request.SiteUpdateRequest;
 import com.tcgm.dto.response.SiteResponse;
 import com.tcgm.dto.response.SiteDetailResponse;
 import com.tcgm.service.SiteService;
+import com.tcgm.util.DateUtils;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -13,6 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/api/sites")
@@ -33,14 +36,24 @@ public class SiteController {
         return ResponseEntity.ok(siteService.getSiteById(id));
     }
 
+    // ⚠️ ÉTENDU (§6.3 cahier des charges) : ajout des filtres période
+    // (startDate/endDate) et responsable (responsableId, tous rôles
+    // confondus). Les dates sont attendues au format yyyy-MM-dd.
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER', 'AGENT_SAISIE')")
     public ResponseEntity<Page<SiteResponse>> getAllSites(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long clientId,
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) Long responsableId,
             Pageable pageable) {
-        return ResponseEntity.ok(siteService.getAllSites(status, clientId, search, pageable));
+        LocalDateTime periodStart = startDate != null ? DateUtils.parseDate(startDate).atStartOfDay() : null;
+        LocalDateTime periodEnd = endDate != null ? DateUtils.parseDate(endDate).atTime(23, 59, 59) : null;
+        return ResponseEntity.ok(
+            siteService.getAllSites(status, clientId, search, periodStart, periodEnd, responsableId, pageable)
+        );
     }
 
     @PutMapping("/{id}")

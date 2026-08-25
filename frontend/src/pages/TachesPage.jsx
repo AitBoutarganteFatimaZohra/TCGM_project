@@ -7,6 +7,7 @@ const STATUTS = [
   { value: 'PLANIFIEE', label: 'Planifiée' },
   { value: 'EN_COURS', label: 'En cours' },
   { value: 'TERMINEE', label: 'Terminée' },
+  { value: 'EN_ATTENTE_VALIDATION', label: 'En attente de validation' },
 ];
 
 const getStatutBadgeClass = (status) => {
@@ -15,6 +16,8 @@ const getStatutBadgeClass = (status) => {
       return 'badge--success';
     case 'EN_COURS':
       return 'badge--warning';
+    case 'EN_ATTENTE_VALIDATION':
+      return 'badge--pending';
     case 'PLANIFIEE':
     default:
       return 'badge--info';
