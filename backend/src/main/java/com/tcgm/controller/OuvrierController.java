@@ -33,8 +33,6 @@ public class OuvrierController {
         return ResponseEntity.ok(ouvrierService.getOuvrierById(id));
     }
 
-    // 🔧 CORRIGÉ : AGENT_SAISIE ajouté — sans quoi le dropdown "Ouvrier"
-    // du formulaire de pointage reste vide (403 silencieux côté frontend).
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER', 'AGENT_SAISIE')")
     public ResponseEntity<Page<OuvrierResponse>> getAllOuvriers(
@@ -44,6 +42,20 @@ public class OuvrierController {
             @RequestParam(required = false) String search,
             Pageable pageable) {
         return ResponseEntity.ok(ouvrierService.getAllOuvriers(chantierId, specialite, active, search, pageable));
+    }
+
+    /**
+     * ✅ NOUVEAU : ouvriers actifs sans affectation EN_COURS — à utiliser
+     * dans le formulaire "Nouvelle affectation" pour voir qui est
+     * réellement disponible à assigner (contrairement à GET /ouvriers qui,
+     * pour un Chef de Chantier, ne montre que son équipe déjà en poste).
+     */
+    @GetMapping("/disponibles")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
+    public ResponseEntity<Page<OuvrierResponse>> getOuvriersDisponibles(
+            @RequestParam(required = false) String search,
+            Pageable pageable) {
+        return ResponseEntity.ok(ouvrierService.getOuvriersDisponibles(search, pageable));
     }
 
     @PutMapping("/{id}")
@@ -74,8 +86,6 @@ public class OuvrierController {
         return ResponseEntity.noContent().build();
     }
 
-    // 🔧 CORRIGÉ : AGENT_SAISIE ajouté — utilisé pour peupler le dropdown
-    // "Ouvrier" scopé sur le chantier unique de l'agent.
     @GetMapping("/chantier/{chantierId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER', 'AGENT_SAISIE')")
     public ResponseEntity<Page<OuvrierResponse>> getOuvriersByChantier(

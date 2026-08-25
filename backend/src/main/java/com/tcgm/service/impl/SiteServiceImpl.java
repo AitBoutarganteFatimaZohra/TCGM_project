@@ -10,6 +10,7 @@ import com.tcgm.mapper.SiteMapper;
 import com.tcgm.model.Site;
 import com.tcgm.model.Client;
 import com.tcgm.model.User;
+import com.tcgm.model.enums.RoleName;
 import com.tcgm.model.enums.StatutSite;
 import com.tcgm.repository.SiteRepository;
 import com.tcgm.repository.ClientRepository;
@@ -29,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
+
 import java.util.Map;
 
 @Service
@@ -42,8 +44,26 @@ public class SiteServiceImpl implements SiteService {
     private final SiteMapper siteMapper;
     private final JournalService journalService;
 
+    // =========================================================
+    // ⚠️ NOUVEAU : rôle de l'utilisateur courant
+    // =========================================================
+
+    private User getCurrentUserOrNull() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null) return null;
+        String email = authentication.getName();
+        if (email == null || "SYSTEM".equals(email) || "anonymousUser".equals(email)) return null;
+        return userRepository.findByEmail(email).orElse(null);
+    }
+
+    private boolean hasRole(User user, RoleName roleName) {
+        return user != null && user.getRoles() != null &&
+            user.getRoles().stream().anyMatch(role -> role.getName() == roleName);
+    }
+
     @Override
     @Transactional
+
     public SiteResponse createSite(SiteCreateRequest request) {
         log.info("Création d'un nouveau site: {}", request.getName());
 
@@ -76,6 +96,7 @@ public class SiteServiceImpl implements SiteService {
 
         if (request.getChefChantierId() != null) {
             User chefChantier = userRepository.findById(request.getChefChantierId())
+
                 .orElseThrow(() -> new ResourceNotFoundException("Chef de chantier", request.getChefChantierId()));
             site.setChefChantier(chefChantier);
         }
@@ -108,6 +129,7 @@ public class SiteServiceImpl implements SiteService {
             throw new BadRequestException("Cette référence de site existe déjà");
         }
 
+
         if (request.getClientId() != null) {
             Client client = clientRepository.findById(request.getClientId())
                 .orElseThrow(() -> new ResourceNotFoundException("Client", request.getClientId()));
@@ -138,6 +160,44 @@ public class SiteServiceImpl implements SiteService {
             site.setChefChantier(chefChantier);
         }
 
+        // =========================================================
+        // ⚠️ NOUVEAU — Étape 1 (§5) : si c'est un Chef de Projet (pas
+
+        // Admin) qui change le statut et/ou les dates, on stocke la
+        // proposition dans les champs pending* au lieu de l'appliquer.
+        // On remet dans `request` la valeur ACTUELLE (pas null) pour ces
+        // 3 champs, afin que siteMapper.updateEntity ne les écrase pas.
+        // =========================================================
+
+        User currentUser = getCurrentUserOrNull();
+        boolean isChefProjetOnly = hasRole(currentUser, RoleName.CHEF_PROJET)
+            && !hasRole(currentUser, RoleName.ADMIN);
+
+        boolean statusChanged = request.getStatus() != null
+            && (site.getStatus() == null || !site.getStatus().name().equalsIgnoreCase(request.getStatus()));
+        boolean startDateChanged = request.getStartDate() != null
+            && !request.getStartDate().equals(site.getStartDate());
+        boolean endDateChanged = request.getEndDate() != null
+            && !request.getEndDate().equals(site.getEndDate());
+        boolean isMajorChange = statusChanged || startDateChanged || endDateChanged;
+
+        if (isChefProjetOnly && isMajorChange) {
+            if (statusChanged) {
+                site.setPendingStatus(StatutSite.valueOf(request.getStatus().toUpperCase()));
+                request.setStatus(site.getStatus() != null ? site.getStatus().name() : null);
+            }
+            if (startDateChanged) {
+                site.setPendingStartDate(request.getStartDate());
+                request.setStartDate(site.getStartDate());
+            }
+            if (endDateChanged) {
+                site.setPendingEndDate(request.getEndDate());
+                request.setEndDate(site.getEndDate());
+            }
+            site.setMotifRejet(null);
+
+        }
+
         siteMapper.updateEntity(site, request);
         site = siteRepository.save(site);
 
@@ -145,7 +205,8 @@ public class SiteServiceImpl implements SiteService {
             TypeAction.MODIFICATION,
             "SITE",
             site.getId(),
-            "Mise à jour du site: " + site.getName(),
+            "Mise à jour du site: " + site.getName()
+                + (isChefProjetOnly && isMajorChange ? " (modification majeure en attente de validation)" : ""),
             null
         );
 
@@ -166,6 +227,7 @@ public class SiteServiceImpl implements SiteService {
                                            LocalDateTime periodStart, LocalDateTime periodEnd,
                                            Long responsableId, Pageable pageable) {
         log.debug("Récupération de tous les sites");
+
 
         StatutSite statut = null;
         if (status != null) {
@@ -199,6 +261,7 @@ public class SiteServiceImpl implements SiteService {
 
         siteRepository.delete(site);
         log.info("Site supprimé avec succès: {}", site.getName());
+
     }
 
     @Override
@@ -216,14 +279,28 @@ public class SiteServiceImpl implements SiteService {
             throw new BadRequestException("Statut invalide: " + status);
         }
 
-        site.setStatus(newStatus);
+        // ⚠️ NOUVEAU : même logique que updateSite — un Chef de Projet
+        // (pas Admin) passe par la proposition en attente.
+        User currentUser = getCurrentUserOrNull();
+        boolean isChefProjetOnly = hasRole(currentUser, RoleName.CHEF_PROJET)
+            && !hasRole(currentUser, RoleName.ADMIN);
+
+        if (isChefProjetOnly) {
+            site.setPendingStatus(newStatus);
+            site.setMotifRejet(null);
+        } else {
+            site.setStatus(newStatus);
+        }
+
         site = siteRepository.save(site);
+
 
         journalService.logAction(
             TypeAction.MODIFICATION,
             "SITE",
             site.getId(),
-            "Changement de statut du site: " + site.getName() + " -> " + status,
+            "Changement de statut du site: " + site.getName() + " -> " + status
+                + (isChefProjetOnly ? " (en attente de validation)" : ""),
             null
         );
 
@@ -231,7 +308,92 @@ public class SiteServiceImpl implements SiteService {
         return siteMapper.toResponse(site);
     }
 
+    // =========================================================
+    // ⚠️ NOUVEAU — Étape 2 (§5) : Administrateur valide
+    // =========================================================
+
     @Override
+    @Transactional
+    public SiteResponse validerModificationSite(Long id) {
+        Site site = siteRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Site", id));
+
+        boolean hasPending = site.getPendingStatus() != null
+            || site.getPendingStartDate() != null
+            || site.getPendingEndDate() != null;
+
+        if (!hasPending) {
+            throw new BadRequestException("Aucune modification majeure en attente pour ce site.");
+        }
+
+        if (site.getPendingStatus() != null) {
+
+            site.setStatus(site.getPendingStatus());
+            site.setPendingStatus(null);
+        }
+        if (site.getPendingStartDate() != null) {
+            site.setStartDate(site.getPendingStartDate());
+            site.setPendingStartDate(null);
+        }
+        if (site.getPendingEndDate() != null) {
+            site.setEndDate(site.getPendingEndDate());
+            site.setPendingEndDate(null);
+        }
+        site.setMotifRejet(null);
+
+        site = siteRepository.save(site);
+
+        journalService.logAction(
+            TypeAction.MODIFICATION,
+            "SITE",
+            site.getId(),
+            "Validation de la modification majeure du site: " + site.getName(),
+            null
+        );
+
+        return siteMapper.toResponse(site);
+    }
+
+    // =========================================================
+    // ⚠️ NOUVEAU — Administrateur rejette
+    // =========================================================
+
+    @Override
+    @Transactional
+
+    public SiteResponse rejeterModificationSite(Long id, String motif) {
+        Site site = siteRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Site", id));
+
+        boolean hasPending = site.getPendingStatus() != null
+            || site.getPendingStartDate() != null
+            || site.getPendingEndDate() != null;
+
+        if (!hasPending) {
+            throw new BadRequestException("Aucune modification majeure en attente pour ce site.");
+        }
+
+        site.setPendingStatus(null);
+        site.setPendingStartDate(null);
+        site.setPendingEndDate(null);
+        site.setMotifRejet(motif);
+
+        site = siteRepository.save(site);
+
+        journalService.logAction(
+            TypeAction.MODIFICATION,
+            "SITE",
+            site.getId(),
+            "Rejet de la modification majeure du site: " + site.getName()
+                + (motif != null && !motif.isBlank() ? " — motif: " + motif : ""),
+            null
+        );
+
+        return siteMapper.toResponse(site);
+    }
+
+    @Override
+
     public Page<SiteResponse> getMySites(Pageable pageable) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userRepository.findByEmail(email)
@@ -264,5 +426,6 @@ public class SiteServiceImpl implements SiteService {
         stats.put("sitesSuspendus", sitesSuspendus);
 
         return stats;
+
     }
 }

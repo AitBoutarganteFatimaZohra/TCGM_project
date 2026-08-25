@@ -4,9 +4,9 @@ import useAuth from '../hooks/useAuth';
 import useRessources from '../hooks/useRessources';
 import useMySites from '../hooks/useMySites';
 import {
-  proposerStatutRessource,
-  validerStatutRessource,
-  rejeterStatutRessource,
+  updateRessourceStatut,
+  validerRessource,
+  rejeterRessource,
 } from '../api/ressourceApi';
 
 const TYPE_LABELS = {
@@ -30,12 +30,22 @@ const STATUT_BADGE_CLASS = {
   EN_MAINTENANCE: 'badge badge--warning',
 };
 
-const ROLES_VALIDATION = ['ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER'];
+const ACTION_LABELS = {
+  CREATION: 'création',
+  MODIFICATION: 'modification',
+  CHANGEMENT_STATUT: 'changement de statut',
+  SUPPRESSION: 'suppression',
+};
+
+// Qui peut valider/rejeter dépend du NIVEAU (voir ci-dessous) — le backend
+// vérifie de toute façon le rôle exact ; ceci ne sert qu'à afficher ou
+// masquer les boutons côté UI.
+const ROLES_NIVEAU1 = ['ADMIN', 'CHEF_CHANTIER'];
+const ROLES_NIVEAU2 = ['ADMIN', 'CHEF_PROJET'];
 const ROLES_PROPOSITION = ['ADMIN', 'MAGASINIER'];
 
 const RessourcesPage = () => {
   const { user } = useAuth();
-  const canValidate = ROLES_VALIDATION.includes(user?.role);
   const canPropose = ROLES_PROPOSITION.includes(user?.role);
 
   const { sites, loading: loadingSites } = useMySites();
@@ -71,21 +81,24 @@ const RessourcesPage = () => {
   }, [selectedSiteId, search, typeFilter, statutFilter]);
 
   const handleDelete = async (id) => {
-    if (window.confirm('Supprimer cette ressource ?')) {
+    if (window.confirm('Soumettre la suppression de cette ressource pour validation ?')) {
       try {
         await removeRessource(id);
+        reload();
       } catch {
         alert('Erreur lors de la suppression');
       }
     }
   };
 
+  // "Proposer" un nouveau statut = updateRessourceStatut côté backend :
+  // ça place la ressource en EN_ATTENTE_CHEF_CHANTIER (niveau 1).
   const handleProposer = async (id, statut) => {
     if (!statut) return;
     setActionError(null);
     setPendingRowId(id);
     try {
-      await proposerStatutRessource(id, statut);
+      await updateRessourceStatut(id, statut);
       reload();
     } catch (err) {
       setActionError(err.response?.data?.message || 'Erreur lors de la proposition.');
@@ -98,7 +111,10 @@ const RessourcesPage = () => {
     setActionError(null);
     setPendingRowId(id);
     try {
-      await validerStatutRessource(id);
+      const result = await validerRessource(id);
+      if (!result) {
+        // La ressource a été supprimée (validation d'une action SUPPRESSION)
+      }
       reload();
     } catch (err) {
       setActionError(err.response?.data?.message || 'Erreur lors de la validation.');
@@ -112,7 +128,7 @@ const RessourcesPage = () => {
     setActionError(null);
     setPendingRowId(id);
     try {
-      await rejeterStatutRessource(id, motif);
+      await rejeterRessource(id, motif);
       reload();
     } catch (err) {
       setActionError(err.response?.data?.message || 'Erreur lors du rejet.');
@@ -204,67 +220,81 @@ const RessourcesPage = () => {
               </tr>
             </thead>
             <tbody>
-              {ressources.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.nom}</td>
-                  <td><span className="badge-specialite">{TYPE_LABELS[r.type] || r.type}</span></td>
-                  <td>{r.quantite ?? '—'} {r.unite || ''}</td>
-                  <td>
-                    <span className={STATUT_BADGE_CLASS[r.statut]}>{STATUT_LABELS[r.statut] || r.statut}</span>
-                    {r.pendingStatut && (
-                      <div className="activity-meta">
-                        → {STATUT_LABELS[r.pendingStatut]} (en attente)
+              {ressources.map((r) => {
+                const isPendingNiveau1 = r.validationStatus === 'EN_ATTENTE_CHEF_CHANTIER';
+                const isPendingNiveau2 = r.validationStatus === 'EN_ATTENTE_CHEF_PROJET';
+                const isPending = isPendingNiveau1 || isPendingNiveau2;
+
+                const canValidateThisRow =
+                  (isPendingNiveau1 && ROLES_NIVEAU1.includes(user?.role)) ||
+                  (isPendingNiveau2 && ROLES_NIVEAU2.includes(user?.role));
+
+                return (
+                  <tr key={r.id}>
+                    <td>{r.nom}</td>
+                    <td><span className="badge-specialite">{TYPE_LABELS[r.type] || r.type}</span></td>
+                    <td>{r.quantite ?? '—'} {r.unite || ''}</td>
+                    <td>
+                      <span className={STATUT_BADGE_CLASS[r.statut]}>{STATUT_LABELS[r.statut] || r.statut}</span>
+                      {isPending && (
+                        <div className="activity-meta">
+                          ⏳ {ACTION_LABELS[r.pendingAction] || r.pendingAction} — en attente (
+                          {isPendingNiveau1 ? 'Chef de Chantier' : 'Chef de Projet, recours'})
+                        </div>
+                      )}
+                      {r.validationStatus === 'REJETEE' && r.rejectionReason && (
+                        <div className="activity-meta">✘ Rejetée : {r.rejectionReason}</div>
+                      )}
+                    </td>
+                    <td className="col-actions">
+                      <div className="row-actions">
+                        <Link to={`/ressources/${r.id}`} className="icon-btn icon-btn--view" title="Voir">👁️</Link>
+                        <Link to={`/ressources/${r.id}/modifier`} className="icon-btn icon-btn--edit" title="Modifier">✏️</Link>
+
+                        {canPropose && !isPending && (
+                          <select
+                            className="filter-select"
+                            style={{ padding: '2px 6px', fontSize: 12 }}
+                            value=""
+                            disabled={pendingRowId === r.id}
+                            onChange={(e) => handleProposer(r.id, e.target.value)}
+                          >
+                            <option value="">Proposer...</option>
+                            {Object.entries(STATUT_LABELS)
+                              .filter(([val]) => val !== r.statut)
+                              .map(([val, label]) => (
+                                <option key={val} value={val}>{label}</option>
+                              ))}
+                          </select>
+                        )}
+
+                        {canValidateThisRow && (
+                          <>
+                            <button
+                              className="icon-btn icon-btn--success"
+                              title="Valider"
+                              disabled={pendingRowId === r.id}
+                              onClick={() => handleValider(r.id)}
+                            >
+                              ✓
+                            </button>
+                            <button
+                              className="icon-btn icon-btn--danger"
+                              title="Rejeter"
+                              disabled={pendingRowId === r.id}
+                              onClick={() => handleRejeter(r.id)}
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
+
+                        <button onClick={() => handleDelete(r.id)} className="icon-btn icon-btn--danger" title="Supprimer">🗑️</button>
                       </div>
-                    )}
-                  </td>
-                  <td className="col-actions">
-                    <div className="row-actions">
-                      <Link to={`/ressources/${r.id}`} className="icon-btn icon-btn--view" title="Voir">👁️</Link>
-                      <Link to={`/ressources/${r.id}/modifier`} className="icon-btn icon-btn--edit" title="Modifier">✏️</Link>
-
-                      {canPropose && !r.pendingStatut && (
-                        <select
-                          className="filter-select"
-                          style={{ padding: '2px 6px', fontSize: 12 }}
-                          value=""
-                          disabled={pendingRowId === r.id}
-                          onChange={(e) => handleProposer(r.id, e.target.value)}
-                        >
-                          <option value="">Proposer...</option>
-                          {Object.entries(STATUT_LABELS)
-                            .filter(([val]) => val !== r.statut)
-                            .map(([val, label]) => (
-                              <option key={val} value={val}>{label}</option>
-                            ))}
-                        </select>
-                      )}
-
-                      {canValidate && r.pendingStatut && (
-                        <>
-                          <button
-                            className="icon-btn icon-btn--success"
-                            title="Valider"
-                            disabled={pendingRowId === r.id}
-                            onClick={() => handleValider(r.id)}
-                          >
-                            ✓
-                          </button>
-                          <button
-                            className="icon-btn icon-btn--danger"
-                            title="Rejeter"
-                            disabled={pendingRowId === r.id}
-                            onClick={() => handleRejeter(r.id)}
-                          >
-                            ✕
-                          </button>
-                        </>
-                      )}
-
-                      <button onClick={() => handleDelete(r.id)} className="icon-btn icon-btn--danger" title="Supprimer">🗑️</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

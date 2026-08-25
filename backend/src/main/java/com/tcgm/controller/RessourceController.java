@@ -1,6 +1,7 @@
 package com.tcgm.controller;
 
 import com.tcgm.dto.request.RessourceCreateRequest;
+import com.tcgm.dto.request.RessourceRejetRequest;
 import com.tcgm.dto.request.RessourceUpdateRequest;
 import com.tcgm.dto.response.RessourceResponse;
 import com.tcgm.model.Ressource;
@@ -10,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -56,44 +59,67 @@ public class RessourceController {
         return ResponseEntity.ok(ressourceService.update(id, request));
     }
 
-    // 🔧 MODIFIÉ : réservé à l'Admin — override direct hors circuit de validation.
-    // Le Magasinier passe désormais par /proposer-statut.
     @PatchMapping("/{id}/statut")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MAGASINIER')")
     public ResponseEntity<RessourceResponse> updateStatut(@PathVariable Long id, @RequestBody Map<String, String> body) {
         Ressource.StatutRessource statut = Ressource.StatutRessource.valueOf(body.get("statut"));
         return ResponseEntity.ok(ressourceService.updateStatut(id, statut));
     }
 
-    // ⚠️ NOUVEAU — Étape 1 (§3) : le Magasinier propose un changement de statut
-    @PostMapping("/{id}/proposer-statut")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MAGASINIER')")
-    public ResponseEntity<RessourceResponse> proposerStatut(@PathVariable Long id, @RequestBody Map<String, String> body) {
-        Ressource.StatutRessource statut = Ressource.StatutRessource.valueOf(body.get("statut"));
-        return ResponseEntity.ok(ressourceService.proposerStatut(id, statut));
-    }
-
-    // ⚠️ NOUVEAU — Étape 2, niveau 1 ou 2 : Chef de Chantier ou Chef de Projet valide
-    @PostMapping("/{id}/valider-statut")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
-    public ResponseEntity<RessourceResponse> validerStatut(@PathVariable Long id) {
-        return ResponseEntity.ok(ressourceService.validerStatut(id));
-    }
-
-    // ⚠️ NOUVEAU — rejet par Chef de Chantier ou Chef de Projet
-    @PostMapping("/{id}/rejeter-statut")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
-    public ResponseEntity<RessourceResponse> rejeterStatut(
-            @PathVariable Long id,
-            @RequestBody(required = false) Map<String, String> body) {
-        String motif = body != null ? body.get("motif") : null;
-        return ResponseEntity.ok(ressourceService.rejeterStatut(id, motif));
-    }
-
+    /**
+     * ⚠️ CHANGEMENT DE COMPORTEMENT : ne supprime plus immédiatement — place
+     * la ressource en attente de validation de suppression et renvoie son
+     * état à jour (200) au lieu d'un 204 sans contenu. Le frontend doit
+     * gérer le corps de la réponse (voir ressourceApi.js).
+     */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MAGASINIER')")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        ressourceService.delete(id);
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<RessourceResponse> delete(@PathVariable Long id) {
+        return ResponseEntity.ok(ressourceService.delete(id));
+    }
+
+    // =========================================================
+    // CIRCUIT DE VALIDATION : Magasinier -> Chef de Chantier -> Chef de Projet
+    // =========================================================
+
+    /**
+     * Valide l'action en attente, au niveau où elle se trouve actuellement
+     * (Chef de Chantier pour le niveau 1, Chef de Projet pour le niveau 2 —
+     * recours après un rejet niveau 1). Le rôle exact est vérifié côté
+     * service à partir du token de l'utilisateur connecté.
+     */
+    @PostMapping("/{id}/valider")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_CHANTIER', 'CHEF_PROJET')")
+    public ResponseEntity<RessourceResponse> valider(@PathVariable Long id, Authentication authentication) {
+        RessourceResponse response = ressourceService.valider(id, extractRole(authentication));
+        // response == null signifie que l'action validée était une
+        // SUPPRESSION : la ressource a été définitivement effacée.
+        if (response == null) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{id}/rejeter")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_CHANTIER', 'CHEF_PROJET')")
+    public ResponseEntity<RessourceResponse> rejeter(
+            @PathVariable Long id,
+            @RequestBody(required = false) RessourceRejetRequest request,
+            Authentication authentication) {
+        return ResponseEntity.ok(ressourceService.rejeter(id, request, extractRole(authentication)));
+    }
+
+    // =========================================================
+    // UTILITAIRE
+    // =========================================================
+
+    private String extractRole(Authentication authentication) {
+        if (authentication == null) return null;
+        return authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .filter(a -> a.startsWith("ROLE_"))
+                .map(a -> a.substring(5))
+                .findFirst()
+                .orElse(null);
     }
 }

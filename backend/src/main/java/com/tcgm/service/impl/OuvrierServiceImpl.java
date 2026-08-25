@@ -50,9 +50,6 @@ public class OuvrierServiceImpl implements OuvrierService {
     public OuvrierResponse createOuvrier(OuvrierCreateRequest request) {
         log.info("Création d'un nouvel ouvrier: {} {}", request.getFirstName(), request.getLastName());
 
-        // Création de la fiche ouvrier : pas de notion de chantier à ce stade
-        // (l'affectation à un chantier se fait via affecterOuvrierSite),
-        // donc pas de scoping nécessaire ici.
         if (ouvrierRepository.existsByCin(request.getCin())) {
             throw new BadRequestException("Un ouvrier avec ce CIN existe déjà");
         }
@@ -162,6 +159,17 @@ public class OuvrierServiceImpl implements OuvrierService {
     }
 
     // =========================================================
+    // ✅ NOUVEAU : OUVRIERS DISPONIBLES (pour formulaire d'affectation)
+    // =========================================================
+
+    @Override
+    public Page<OuvrierResponse> getOuvriersDisponibles(String search, Pageable pageable) {
+        log.debug("Récupération des ouvriers disponibles (sans affectation en cours)");
+        Page<Ouvrier> ouvriers = ouvrierRepository.findOuvriersDisponibles(search, pageable);
+        return ouvriers.map(ouvrierMapper::toResponse);
+    }
+
+    // =========================================================
     // DELETE
     // =========================================================
 
@@ -202,7 +210,6 @@ public class OuvrierServiceImpl implements OuvrierService {
         Site site = siteRepository.findById(request.getSiteId())
             .orElseThrow(() -> new ResourceNotFoundException("Site", request.getSiteId()));
 
-        // Un Chef de Chantier ne peut affecter un ouvrier qu'à SON chantier
         if (securityUtils.isChefChantier()
                 && !securityUtils.getChantierIdsAsChefChantier().contains(request.getSiteId())) {
             throw new AccessDeniedException("Vous n'êtes pas responsable de ce chantier");
@@ -242,7 +249,6 @@ public class OuvrierServiceImpl implements OuvrierService {
         Affectation affectation = affectationRepository.findById(affectationId)
             .orElseThrow(() -> new ResourceNotFoundException("Affectation", affectationId));
 
-        // Un Chef de Chantier ne peut désaffecter que sur SON chantier
         if (securityUtils.isChefChantier()
                 && !securityUtils.getChantierIdsAsChefChantier().contains(affectation.getChantier().getId())) {
             throw new AccessDeniedException("Vous n'êtes pas responsable de ce chantier");
@@ -285,11 +291,6 @@ public class OuvrierServiceImpl implements OuvrierService {
     // HELPER PRIVÉ
     // =========================================================
 
-    /**
-     * Pour un Chef de Chantier : vérifie que l'ouvrier ciblé est bien
-     * affecté (EN_COURS) à l'un de ses chantiers. Ne fait rien pour
-     * les autres rôles (Admin, Chef de Projet, Magasinier).
-     */
     private void checkOuvrierAccessForChefChantier(Long ouvrierId) {
         if (!securityUtils.isChefChantier()) {
             return;

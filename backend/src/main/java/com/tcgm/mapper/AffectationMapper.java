@@ -3,12 +3,10 @@ package com.tcgm.mapper;
 import com.tcgm.dto.request.AffectationRequest;
 import com.tcgm.dto.response.AffectationResponse;
 import com.tcgm.model.Affectation;
-import com.tcgm.model.enums.StatutAffectation;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @Mapper(componentModel = "spring")
@@ -16,11 +14,13 @@ public interface AffectationMapper {
 
     @Mapping(target = "chantier", expression = "java(mapChantier(affectation))")
     @Mapping(target = "ouvrier", expression = "java(mapOuvrier(affectation))")
+    @Mapping(target = "rejectionReason", source = "rejectionReason")
     AffectationResponse toResponse(Affectation affectation);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "chantier", ignore = true)
     @Mapping(target = "ouvrier", ignore = true)
+    @Mapping(target = "rejectionReason", ignore = true)
     @Mapping(target = "statut", expression = "java(com.tcgm.model.enums.StatutAffectation.valueOf(request.getStatut()))")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
@@ -29,6 +29,7 @@ public interface AffectationMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "chantier", ignore = true)
     @Mapping(target = "ouvrier", ignore = true)
+    @Mapping(target = "rejectionReason", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     void updateEntity(@MappingTarget Affectation affectation, AffectationRequest request);

@@ -13,17 +13,17 @@ export const ROUTE_ACCESS = {
   '/ouvriers':             [ROLES.ADMIN, ROLES.CHEF_CHANTIER],
   '/taches':               [ROLES.ADMIN, ROLES.CHEF_CHANTIER, ROLES.CHEF_PROJET],
   '/travaux':              [ROLES.ADMIN, ROLES.CHEF_CHANTIER],
-  '/affectations':         [ROLES.ADMIN, ROLES.CHEF_CHANTIER],
+  // CORRIGE : CHEF_PROJET ajoute - il doit pouvoir acceder aux
+  // affectations pour utiliser le circuit de validation (boutons
+  // Valider/Rejeter sur /affectations/:id).
+  '/affectations':         [ROLES.ADMIN, ROLES.CHEF_CHANTIER, ROLES.CHEF_PROJET],
   '/pointage':             [ROLES.ADMIN, ROLES.CHEF_CHANTIER, ROLES.AGENT_SAISIE],
   '/ressources':           [ROLES.ADMIN, ROLES.MAGASINIER, ROLES.CHEF_CHANTIER, ROLES.CHEF_PROJET],
   '/mes-taches':           [ROLES.MAGASINIER],
   '/mon-journal':          [ROLES.MAGASINIER],
   '/mon-journal-agent':    [ROLES.AGENT_SAISIE],
   '/mon-profil':           [ROLES.ADMIN, ROLES.CHEF_PROJET, ROLES.CHEF_CHANTIER, ROLES.MAGASINIER, ROLES.AGENT_SAISIE],
-  // 🔧 CORRIGÉ : CHEF_CHANTIER ajouté — il doit voir le journal des
-  // rôles sous sa supervision (Magasinier, Agent de Saisie) pour
-  // confirmer leurs actions en attente.
-  '/journal':              [ROLES.ADMIN, ROLES.CHEF_PROJET, ROLES.CHEF_CHANTIER],
+  '/journal':              [ROLES.ADMIN, ROLES.CHEF_PROJET],
   '/statistiques':         [ROLES.ADMIN, ROLES.CHEF_PROJET],
   '/utilisateurs/nouveau': [ROLES.ADMIN],
 };

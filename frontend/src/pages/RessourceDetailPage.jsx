@@ -1,12 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import useAuth from '../hooks/useAuth';
 import useRessources from '../hooks/useRessources';
-import {
-  proposerStatutRessource,
-  validerStatutRessource,
-  rejeterStatutRessource,
-} from '../api/ressourceApi';
+import { validerRessource, rejeterRessource } from '../api/ressourceApi';
+// ⚠️ Adaptez ce chemin si besoin (même hook que TacheDetailPage/AffectationDetailPage).
+import useAuth from '../hooks/useAuth';
 
 const TYPE_LABELS = {
   MATERIEL: 'Matériel',
@@ -22,8 +19,19 @@ const STATUT_LABELS = {
   EN_MAINTENANCE: 'En maintenance',
 };
 
-const ROLES_VALIDATION = ['ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER'];
-const ROLES_PROPOSITION = ['ADMIN', 'MAGASINIER'];
+const VALIDATION_LABELS = {
+  VALIDEE: null, // rien à afficher, état stable
+  EN_ATTENTE_CHEF_CHANTIER: 'En attente de validation (Chef de Chantier)',
+  EN_ATTENTE_CHEF_PROJET: 'En attente de validation (Chef de Projet — recours)',
+  REJETEE: 'Rejetée définitivement',
+};
+
+const ACTION_LABELS = {
+  CREATION: 'création',
+  MODIFICATION: 'modification',
+  CHANGEMENT_STATUT: 'changement de statut',
+  SUPPRESSION: 'suppression',
+};
 
 const formatDate = (isoString) =>
   isoString ? new Date(isoString).toLocaleDateString('fr-FR') : 'N/A';
@@ -31,66 +39,61 @@ const formatDate = (isoString) =>
 const RessourceDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const { fetchRessourceById, removeRessource, loading } = useRessources();
+  const { user } = useAuth();
+  const role = user?.role;
 
   const [ressource, setRessource] = useState(null);
   const [error, setError] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const [proposedStatut, setProposedStatut] = useState('');
-  const [proposing, setProposing] = useState(false);
-
-  const [showValidation, setShowValidation] = useState(null); // 'valider' | 'rejeter' | null
-  const [motif, setMotif] = useState('');
-  const [validating, setValidating] = useState(false);
-
-  const canPropose = ROLES_PROPOSITION.includes(user?.role);
-  const canValidate = ROLES_VALIDATION.includes(user?.role);
-
-  const load = () => fetchRessourceById(id).then(setRessource);
+  const load = () => {
+    fetchRessourceById(id)
+      .then(setRessource)
+      .catch(() => setError("Impossible de charger cette ressource."));
+  };
 
   useEffect(() => {
-    load().catch(() => setError("Impossible de charger cette ressource."));
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const handleDelete = async () => {
-    if (window.confirm('Supprimer cette ressource ?')) {
+    if (window.confirm('Soumettre la suppression de cette ressource pour validation ?')) {
       await removeRessource(id);
-      navigate('/ressources');
+      load();
     }
   };
 
-  const handleProposer = async (e) => {
-    e.preventDefault();
-    if (!proposedStatut) return;
-    setProposing(true);
+  const handleValider = async () => {
+    if (!window.confirm('Valider cette action ?')) return;
+    setActionLoading(true);
     try {
-      await proposerStatutRessource(id, proposedStatut);
-      setProposedStatut('');
-      await load();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Erreur lors de la proposition.');
-    } finally {
-      setProposing(false);
-    }
-  };
-
-  const handleValidation = async () => {
-    setValidating(true);
-    try {
-      if (showValidation === 'valider') {
-        await validerStatutRessource(id);
-      } else {
-        await rejeterStatutRessource(id, motif || null);
+      const result = await validerRessource(id);
+      if (!result) {
+        // La ressource a été supprimée (validation d'une SUPPRESSION)
+        navigate('/ressources');
+        return;
       }
-      setShowValidation(null);
-      setMotif('');
-      await load();
+      setRessource(result);
     } catch (err) {
-      setError(err.response?.data?.message || 'Erreur lors de la validation.');
+      alert(err?.response?.data?.message || 'Erreur lors de la validation');
     } finally {
-      setValidating(false);
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejeter = async () => {
+    const motif = window.prompt('Motif du rejet (optionnel) :', '');
+    if (motif === null) return;
+    setActionLoading(true);
+    try {
+      const result = await rejeterRessource(id, motif);
+      setRessource(result);
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Erreur lors du rejet');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -98,11 +101,20 @@ const RessourceDetailPage = () => {
     return <div className="loading">Chargement...</div>;
   }
 
-  if (error && !ressource) {
+  if (error) {
     return <div className="error-banner">❌ {error}</div>;
   }
 
   if (!ressource) return null;
+
+  const validationStatus = ressource.validationStatus;
+  const isPendingNiveau1 = validationStatus === 'EN_ATTENTE_CHEF_CHANTIER';
+  const isPendingNiveau2 = validationStatus === 'EN_ATTENTE_CHEF_PROJET';
+  const isPending = isPendingNiveau1 || isPendingNiveau2;
+
+  const canValiderOuRejeter =
+    (isPendingNiveau1 && (role === 'CHEF_CHANTIER' || role === 'ADMIN')) ||
+    (isPendingNiveau2 && (role === 'CHEF_PROJET' || role === 'ADMIN'));
 
   return (
     <div className="chantiers-page">
@@ -118,9 +130,31 @@ const RessourceDetailPage = () => {
         </div>
       </div>
 
-      {error && <div className="error-banner">❌ {error}</div>}
+      {isPending && (
+        <div className="info-banner">
+          ⏳ {VALIDATION_LABELS[validationStatus]} — action en attente :{' '}
+          <strong>{ACTION_LABELS[ressource.pendingAction] || ressource.pendingAction}</strong>
+        </div>
+      )}
 
-      <div className="chantier-card" style={{ maxWidth: 560, marginBottom: 20 }}>
+      {validationStatus === 'REJETEE' && ressource.rejectionReason && (
+        <div className="error-banner">
+          ⚠️ Demande rejetée définitivement. Motif : {ressource.rejectionReason}
+        </div>
+      )}
+
+      {canValiderOuRejeter && (
+        <div className="status-actions" style={{ marginBottom: 16 }}>
+          <button type="button" className="btn-primary" disabled={actionLoading} onClick={handleValider}>
+            ✔ Valider
+          </button>
+          <button type="button" className="btn-danger" disabled={actionLoading} onClick={handleRejeter}>
+            ✘ Rejeter
+          </button>
+        </div>
+      )}
+
+      <div className="chantier-card" style={{ maxWidth: 560 }}>
         <p><strong>Statut:</strong> {STATUT_LABELS[ressource.statut] || ressource.statut}</p>
         <p><strong>Quantité:</strong> {ressource.quantite ?? '—'} {ressource.unite || ''}</p>
         <p><strong>Site:</strong> {ressource.siteName || 'N/A'}</p>
@@ -134,75 +168,6 @@ const RessourceDetailPage = () => {
           </>
         )}
       </div>
-
-      {/* Statut proposé en attente */}
-      {ressource.pendingStatut && (
-        <div className="error-banner" style={{ background: '#e0f2fe', color: '#0369a1', borderColor: '#bae6fd', marginBottom: 20 }}>
-          Changement de statut proposé : <strong>{STATUT_LABELS[ressource.statut]}</strong> → <strong>{STATUT_LABELS[ressource.pendingStatut]}</strong>, en attente de validation.
-        </div>
-      )}
-
-      {/* Dernier rejet */}
-      {!ressource.pendingStatut && ressource.motifRejet && (
-        <div className="error-banner" style={{ marginBottom: 20 }}>
-          ❌ La dernière proposition de changement de statut a été rejetée.{ressource.motifRejet ? ` Motif : ${ressource.motifRejet}` : ''}
-        </div>
-      )}
-
-      {/* Panneau Magasinier : proposer un changement */}
-      {canPropose && !ressource.pendingStatut && (
-        <form className="chantier-form" onSubmit={handleProposer} style={{ maxWidth: 560, marginBottom: 20 }}>
-          <div className="form-group">
-            <label>Proposer un changement de statut</label>
-            <select value={proposedStatut} onChange={(e) => setProposedStatut(e.target.value)}>
-              <option value="">Sélectionner un statut</option>
-              {Object.entries(STATUT_LABELS)
-                .filter(([val]) => val !== ressource.statut)
-                .map(([val, label]) => (
-                  <option key={val} value={val}>{label}</option>
-                ))}
-            </select>
-          </div>
-          <div className="form-actions">
-            <button type="submit" className="btn-primary" disabled={proposing || !proposedStatut}>
-              {proposing ? 'Envoi...' : 'Soumettre pour validation'}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Panneau Chef de Chantier / Chef de Projet : valider ou rejeter */}
-      {canValidate && ressource.pendingStatut && (
-        <div className="chantier-card" style={{ maxWidth: 560, marginBottom: 20 }}>
-          {showValidation ? (
-            <div className="form-group">
-              <label>{showValidation === 'valider' ? 'Confirmation' : 'Motif du rejet'}</label>
-              <textarea
-                value={motif}
-                onChange={(e) => setMotif(e.target.value)}
-                placeholder={showValidation === 'valider' ? 'Commentaire éventuel...' : 'Expliquez le motif du rejet...'}
-              />
-              <div className="form-actions">
-                <button className="btn-primary" onClick={handleValidation} disabled={validating}>
-                  {validating ? 'Traitement...' : `Confirmer ${showValidation === 'valider' ? 'la validation' : 'le rejet'}`}
-                </button>
-                <button className="btn-ghost" onClick={() => { setShowValidation(null); setMotif(''); }}>
-                  Annuler
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="chantier-footer" style={{ borderTop: 'none', paddingTop: 0 }}>
-              <button className="btn-primary" onClick={() => setShowValidation('valider')}>
-                ✓ Valider le changement
-              </button>
-              <button className="btn-delete" onClick={() => setShowValidation('rejeter')}>
-                ✕ Rejeter le changement
-              </button>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 };

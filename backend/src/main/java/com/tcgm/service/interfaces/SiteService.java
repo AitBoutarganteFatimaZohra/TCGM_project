@@ -21,4 +21,8 @@ public interface SiteService {
     SiteResponse updateSiteStatus(Long id, String status);
     Page<SiteResponse> getMySites(Pageable pageable);
     Map<String, Object> getGlobalStatistiques();
+
+    // ⚠️ NOUVEAU
+    SiteResponse validerModificationSite(Long id);
+    SiteResponse rejeterModificationSite(Long id, String motif);
 }

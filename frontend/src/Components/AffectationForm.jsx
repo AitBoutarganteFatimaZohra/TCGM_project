@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getChantiers } from '../api/chantierApi';
-import { getOuvriers } from '../api/ouvrierApi';
+import { getOuvriersDisponibles } from '../api/ouvrierApi';
 
 const STATUTS = ['PLANIFIEE', 'EN_COURS', 'TERMINEE', 'ANNULEE'];
 
@@ -33,9 +33,28 @@ const AffectationForm = ({ initialData, onSubmit, submitLabel = 'Enregistrer', i
   const [formError, setFormError] = useState(null);
 
   useEffect(() => {
-    getChantiers().then((data) => setChantiers(data.content || data)).catch(() => {});
-    getOuvriers().then((data) => setOuvriers(data.content || data)).catch(() => {});
-  }, []);
+    getChantiers({ size: 100 }).then((data) => setChantiers(data.content || data)).catch(() => {});
+
+    // ✅ CORRIGÉ : on utilise /ouvriers/disponibles (ouvriers sans
+    // affectation EN_COURS) au lieu de /ouvriers, qui pour un Chef de
+    // Chantier ne renvoyait que son équipe déjà en poste — un ouvrier
+    // fraîchement libéré (affectation TERMINEE/ANNULEE) n'apparaissait
+    // donc jamais dans ce select.
+    getOuvriersDisponibles({ size: 100 })
+      .then((data) => {
+        let list = data.content || data;
+        // En mode édition, l'ouvrier actuellement assigné a justement une
+        // affectation EN_COURS (celle qu'on modifie) donc il n'apparaît
+        // pas dans "disponibles" — on le réinjecte manuellement pour que
+        // le select l'affiche correctement.
+        if (initialData?.ouvrier && !list.some((o) => o.id === initialData.ouvrier.id)) {
+          list = [initialData.ouvrier, ...list];
+        }
+        setOuvriers(list);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData?.ouvrier?.id]);
 
   // Si initialData arrive après le premier rendu (fetch async côté page parente)
   useEffect(() => {

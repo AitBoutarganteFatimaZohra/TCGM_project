@@ -19,10 +19,18 @@ public class SiteResponse {
     private LocalDateTime startDate;
     private LocalDateTime endDate;
     private StatutSite status;
+
+    // ⚠️ NOUVEAU
+    private StatutSite pendingStatus;
+    private LocalDateTime pendingStartDate;
+    private LocalDateTime pendingEndDate;
+    private String motifRejet;
+
     private ClientBrief client;
     private UserBrief chefProjet;
     private UserBrief magasinier;
     private UserBrief agentSaisie;
+
     private UserBrief chefChantier;
     private Integer totalTaches;
     private Integer totalOuvriers;

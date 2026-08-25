@@ -1,4 +1,3 @@
-
 package com.tcgm.dto.response;
 
 import com.tcgm.model.enums.StatutAffectation;
@@ -15,6 +14,8 @@ public class AffectationResponse {
     private LocalDate dateDebut;
     private LocalDate dateFin;
     private StatutAffectation statut;
+    // ✅ NOUVEAU
+    private String rejectionReason;
     private ChantierBrief chantier;
     private OuvrierBrief ouvrier;
     private LocalDateTime createdAt;

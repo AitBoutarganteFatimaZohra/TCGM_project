@@ -4,13 +4,15 @@ import useAffectations from '../hooks/useAffectations';
 import { getChantiers } from '../api/chantierApi';
 import { getOuvriers } from '../api/ouvrierApi';
 
-const STATUTS = ['PLANIFIEE', 'EN_COURS', 'TERMINEE', 'ANNULEE'];
+const STATUTS = ['PLANIFIEE', 'EN_COURS', 'TERMINEE', 'ANNULEE', 'EN_ATTENTE_VALIDATION', 'REJETEE'];
 
 const STATUT_LABELS = {
   PLANIFIEE: 'Planifiée',
   EN_COURS: 'En cours',
   TERMINEE: 'Terminée',
   ANNULEE: 'Annulée',
+  EN_ATTENTE_VALIDATION: 'En attente de validation',
+  REJETEE: 'Rejetée',
 };
 
 const STATUT_BADGE_CLASS = {
@@ -18,6 +20,8 @@ const STATUT_BADGE_CLASS = {
   EN_COURS: 'badge badge--success',
   TERMINEE: 'badge badge--neutral',
   ANNULEE: 'badge badge--danger',
+  EN_ATTENTE_VALIDATION: 'badge badge--warning',
+  REJETEE: 'badge badge--danger',
 };
 
 const PAGE_SIZE = 10;
@@ -34,7 +38,7 @@ const AffectationsPage = () => {
 
   useEffect(() => {
     getChantiers().then((data) => setChantiers(data.content || data)).catch(() => {});
-    getOuvriers().catch(() => {}); // pré-charge côté cache éventuel (non utilisé ici directement)
+    getOuvriers().catch(() => {});
   }, []);
 
   useEffect(() => {

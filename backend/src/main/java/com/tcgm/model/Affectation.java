@@ -27,8 +27,12 @@ public class Affectation {
     private LocalDate dateFin;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 20)
+    @Column(length = 25)
     private StatutAffectation statut;
+
+    // ✅ NOUVEAU : motif du rejet par le Chef de Projet (circuit de validation)
+    @Column(name = "rejection_reason", length = 1000)
+    private String rejectionReason;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -54,6 +58,10 @@ public class Affectation {
 
     public boolean isEnCours() {
         return statut == StatutAffectation.EN_COURS;
+    }
+
+    public boolean isEnAttenteValidation() {
+        return statut == StatutAffectation.EN_ATTENTE_VALIDATION;
     }
 
     @PrePersist

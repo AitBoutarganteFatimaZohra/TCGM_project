@@ -30,6 +30,7 @@ public class Site {
     @Column(columnDefinition = "TEXT")
     private String address;
 
+
     @Column(columnDefinition = "TEXT")
     private String description;
 
@@ -48,6 +49,26 @@ public class Site {
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private StatutSite status = StatutSite.PLANIFIE;
+
+    // =========================================================
+    // ⚠️ NOUVEAU : circuit de validation des modifications majeures
+    // (§5 cahier des charges) — Chef de Projet propose, Administrateur
+    // valide ou rejette.
+    // =========================================================
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pending_status", length = 20)
+    private StatutSite pendingStatus;
+
+    @Column(name = "pending_start_date")
+    private LocalDateTime pendingStartDate;
+
+
+    @Column(name = "pending_end_date")
+    private LocalDateTime pendingEndDate;
+
+    @Column(name = "motif_rejet", length = 500)
+    private String motifRejet;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -75,37 +96,19 @@ public class Site {
     @JoinColumn(name = "agent_saisie_id")
     private User agentSaisie;
 
+
     @ManyToOne
     @JoinColumn(name = "chef_chantier_id")
     private User chefChantier;
 
-    // =========================================================
-    // RELATIONS À GARDER
-    // =========================================================
-
     @OneToMany(mappedBy = "site", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<DossierPointage> dossiersPointage = new ArrayList<>();
-
-    // =========================================================
-    // NOUVELLES RELATIONS
-    // =========================================================
 
     @OneToMany(mappedBy = "chantier", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Travaux> travaux = new ArrayList<>();
 
     @OneToMany(mappedBy = "chantier", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Affectation> affectations = new ArrayList<>();
-
-    // =========================================================
-    // RELATIONS À SUPPRIMER (progressivement)
-    // =========================================================
-
-    // SUPPRIMER : @OneToMany(mappedBy = "site") private List<Tache> taches;
-    // SUPPRIMER : @OneToMany(mappedBy = "site") private List<AffectationOuvrierSite> affectationsOuvriers;
-
-    // =========================================================
-    // MÉTHODES UTILITAIRES
-    // =========================================================
 
     public void addTravaux(Travaux travaux) {
         this.travaux.add(travaux);
@@ -126,6 +129,7 @@ public class Site {
         this.affectations.remove(affectation);
         affectation.setChantier(null);
     }
+
 
     @PrePersist
     protected void onCreate() {

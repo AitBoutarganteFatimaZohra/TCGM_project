@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Building2, ScrollText, BarChart3, ListChecks, Package } from 'lucide-react';
+import { LayoutDashboard, Building2, ScrollText, BarChart3, ListChecks, Package, Pin } from 'lucide-react';
 
 // Nav en pilules utilisée à la place de la Sidebar pour les rôles de
 // supervision (actuellement : Chef de Projet). Voir accessConfig.js pour
@@ -8,10 +8,10 @@ const pillItems = [
   { path: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
   { path: '/chantiers', label: 'Chantiers', Icon: Building2 },
   { path: '/taches', label: 'Tâches', Icon: ListChecks },
-  // ✅ NOUVEAU : le Chef de Projet valide/rejette les propositions de
-  // changement de statut soumises par le Magasinier (circuit de
-  // validation des ressources, niveau 2 en cas de recours) — voir
-  // accessConfig.js où '/ressources' lui a été ouvert.
+  // ✅ NOUVEAU : le Chef de Projet valide/rejette les affectations
+  // soumises par le Chef de Chantier — voir accessConfig.js où
+  // '/affectations' lui a été ouvert.
+  { path: '/affectations', label: 'Affectations', Icon: Pin },
   { path: '/ressources', label: 'Ressources', Icon: Package },
   { path: '/journal', label: 'Journal', Icon: ScrollText },
   { path: '/statistiques', label: 'Statistiques', Icon: BarChart3 },

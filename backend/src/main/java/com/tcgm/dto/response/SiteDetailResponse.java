@@ -20,9 +20,17 @@ public class SiteDetailResponse {
     private LocalDateTime startDate;
     private LocalDateTime endDate;
     private StatutSite status;
+
+    // ⚠️ NOUVEAU
+    private StatutSite pendingStatus;
+    private LocalDateTime pendingStartDate;
+    private LocalDateTime pendingEndDate;
+    private String motifRejet;
+
     private ClientBrief client;
     private UserBrief chefProjet;
     private UserBrief magasinier;
+
     private UserBrief agentSaisie;
     private UserBrief chefChantier;
     private List<TacheBrief> taches;
@@ -55,6 +63,7 @@ public class SiteDetailResponse {
 
     @Data
     @Builder
+
     public static class TacheBrief {
         private Long id;
         private String title;

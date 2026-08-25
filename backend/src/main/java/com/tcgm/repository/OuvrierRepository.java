@@ -18,29 +18,14 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     // RECHERCHES DE BASE
     // =========================================================
 
-    /**
-     * Trouver un ouvrier par son CIN
-     */
     Optional<Ouvrier> findByCin(String cin);
 
-    /**
-     * Vérifier si un CIN existe déjà
-     */
     boolean existsByCin(String cin);
 
-    /**
-     * Trouver les ouvriers par spécialité
-     */
     List<Ouvrier> findBySpecialite(String specialite);
 
-    /**
-     * Trouver les ouvriers actifs
-     */
     List<Ouvrier> findByActiveTrue();
 
-    /**
-     * Trouver les ouvriers inactifs
-     */
     List<Ouvrier> findByActiveFalse();
 
 
@@ -48,10 +33,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     // RECHERCHES PAR CHANTIER
     // =========================================================
 
-    /**
-     * Trouver les ouvriers affectés à un chantier
-     * avec une affectation EN_COURS.
-     */
     @Query("""
         SELECT DISTINCT o
         FROM Ouvrier o
@@ -65,9 +46,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     );
 
 
-    /**
-     * Trouver les ouvriers actifs affectés à un chantier.
-     */
     @Query("""
         SELECT DISTINCT o
         FROM Ouvrier o
@@ -81,9 +59,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     );
 
 
-    /**
-     * Trouver les ouvriers non affectés à un chantier.
-     */
     @Query("""
         SELECT o
         FROM Ouvrier o
@@ -104,9 +79,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     // RECHERCHES AVEC FILTRES
     // =========================================================
 
-    /**
-     * Recherche d'ouvriers avec filtres.
-     */
     @Query("""
         SELECT o
         FROM Ouvrier o
@@ -127,9 +99,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     );
 
 
-    /**
-     * Recherche d'ouvriers par chantier avec filtres.
-     */
     @Query("""
         SELECT DISTINCT o
         FROM Ouvrier o
@@ -155,9 +124,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     // RECHERCHES AVEC AFFECTATIONS
     // =========================================================
 
-    /**
-     * Trouver un ouvrier avec ses affectations.
-     */
     @Query("""
         SELECT DISTINCT o
         FROM Ouvrier o
@@ -169,9 +135,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     );
 
 
-    /**
-     * Trouver un ouvrier avec ses affectations et les chantiers.
-     */
     @Query("""
         SELECT DISTINCT o
         FROM Ouvrier o
@@ -184,9 +147,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     );
 
 
-    /**
-     * Trouver les ouvriers ayant une affectation en cours.
-     */
     @Query("""
         SELECT DISTINCT o
         FROM Ouvrier o
@@ -196,10 +156,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     List<Ouvrier> findOuvriersWithAffectationEnCours();
 
 
-    /**
-     * Trouver les ouvriers ayant une affectation en cours
-     * sur un chantier spécifique.
-     */
     @Query("""
         SELECT DISTINCT o
         FROM Ouvrier o
@@ -212,9 +168,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     );
 
 
-    /**
-     * Vérifier si un ouvrier possède une affectation en cours.
-     */
     @Query("""
         SELECT COUNT(a) > 0
         FROM Affectation a
@@ -227,12 +180,43 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
 
 
     // =========================================================
-    // STATISTIQUES
+    // ✅ NOUVEAU : OUVRIERS DISPONIBLES POUR UNE NOUVELLE AFFECTATION
     // =========================================================
 
     /**
-     * Compter les ouvriers par spécialité.
+     * Ouvriers actifs n'ayant AUCUNE affectation EN_COURS actuellement —
+     * donc libres à assigner. Contrairement à findOuvriersByChantier* qui
+     * montre "l'équipe déjà sur place", celle-ci sert au formulaire de
+     * création d'affectation, où l'on cherche justement quelqu'un de
+     * disponible (nouvel ouvrier, ou ouvrier dont la précédente
+     * affectation vient de se terminer/être annulée).
      */
+    @Query("""
+        SELECT o
+        FROM Ouvrier o
+        WHERE o.active = true
+        AND o.id NOT IN (
+            SELECT a.ouvrier.id
+            FROM Affectation a
+            WHERE a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+        )
+        AND (
+            :search IS NULL
+            OR LOWER(o.firstName) LIKE LOWER(CONCAT('%', :search, '%'))
+            OR LOWER(o.lastName) LIKE LOWER(CONCAT('%', :search, '%'))
+            OR LOWER(o.cin) LIKE LOWER(CONCAT('%', :search, '%'))
+        )
+        """)
+    Page<Ouvrier> findOuvriersDisponibles(
+            @Param("search") String search,
+            Pageable pageable
+    );
+
+
+    // =========================================================
+    // STATISTIQUES
+    // =========================================================
+
     @Query("""
         SELECT o.specialite, COUNT(o)
         FROM Ouvrier o
@@ -241,9 +225,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     List<Object[]> countOuvriersBySpecialite();
 
 
-    /**
-     * Compter les ouvriers actifs.
-     */
     @Query("""
         SELECT COUNT(o)
         FROM Ouvrier o
@@ -252,9 +233,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     long countActiveOuvriers();
 
 
-    /**
-     * Compter les ouvriers par statut actif/inactif.
-     */
     @Query("""
         SELECT o.active, COUNT(o)
         FROM Ouvrier o
@@ -267,9 +245,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     // STATISTIQUES PAR CHANTIER
     // =========================================================
 
-    /**
-     * Compter les ouvriers affectés à un chantier.
-     */
     @Query("""
         SELECT COUNT(DISTINCT o)
         FROM Ouvrier o
@@ -282,9 +257,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     );
 
 
-    /**
-     * Compter les ouvriers actifs affectés à un chantier.
-     */
     @Query("""
         SELECT COUNT(DISTINCT o)
         FROM Ouvrier o
@@ -298,9 +270,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     );
 
 
-    /**
-     * Compter les ouvriers par spécialité sur un chantier.
-     */
     @Query("""
         SELECT o.specialite, COUNT(DISTINCT o)
         FROM Ouvrier o
@@ -318,9 +287,6 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     // TOP SPÉCIALITÉS
     // =========================================================
 
-    /**
-     * Trouver les spécialités les plus courantes.
-     */
     @Query("""
         SELECT o.specialite, COUNT(o)
         FROM Ouvrier o
@@ -331,36 +297,35 @@ public interface OuvrierRepository extends JpaRepository<Ouvrier, Long> {
     List<Object[]> findTopSpecialites(Pageable pageable);
 
 
+    @Query("""
+        SELECT DISTINCT o
+        FROM Ouvrier o
+        JOIN o.affectations a
+        WHERE a.chantier.id IN :chantierIds
+        AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+        """)
+    Page<Ouvrier> findOuvriersByChantierIn(
+            @Param("chantierIds") List<Long> chantierIds,
+            Pageable pageable
+    );
 
     @Query("""
-    SELECT DISTINCT o
-    FROM Ouvrier o
-    JOIN o.affectations a
-    WHERE a.chantier.id IN :chantierIds
-    AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
-    """)
-Page<Ouvrier> findOuvriersByChantierIn(
-        @Param("chantierIds") List<Long> chantierIds,
-        Pageable pageable
-);
-
-@Query("""
-    SELECT DISTINCT o
-    FROM Ouvrier o
-    JOIN o.affectations a
-    WHERE a.chantier.id IN :chantierIds
-    AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
-    AND (:specialite IS NULL OR o.specialite = :specialite)
-    AND (
-        :search IS NULL
-        OR LOWER(o.firstName) LIKE LOWER(CONCAT('%', :search, '%'))
-        OR LOWER(o.lastName) LIKE LOWER(CONCAT('%', :search, '%'))
-    )
-    """)
-Page<Ouvrier> findOuvriersByChantierInWithFilters(
-        @Param("chantierIds") List<Long> chantierIds,
-        @Param("specialite") String specialite,
-        @Param("search") String search,
-        Pageable pageable
-);
+        SELECT DISTINCT o
+        FROM Ouvrier o
+        JOIN o.affectations a
+        WHERE a.chantier.id IN :chantierIds
+        AND a.statut = com.tcgm.model.enums.StatutAffectation.EN_COURS
+        AND (:specialite IS NULL OR o.specialite = :specialite)
+        AND (
+            :search IS NULL
+            OR LOWER(o.firstName) LIKE LOWER(CONCAT('%', :search, '%'))
+            OR LOWER(o.lastName) LIKE LOWER(CONCAT('%', :search, '%'))
+        )
+        """)
+    Page<Ouvrier> findOuvriersByChantierInWithFilters(
+            @Param("chantierIds") List<Long> chantierIds,
+            @Param("specialite") String specialite,
+            @Param("search") String search,
+            Pageable pageable
+    );
 }

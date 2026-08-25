@@ -21,4 +21,6 @@ public interface OuvrierService {
     
     // MODIFIÉ : getOuvriersBySite → getOuvriersByChantier
     Page<OuvrierResponse> getOuvriersByChantier(Long chantierId, Pageable pageable);
+
+    Page<OuvrierResponse> getOuvriersDisponibles(String search, Pageable pageable);
 }

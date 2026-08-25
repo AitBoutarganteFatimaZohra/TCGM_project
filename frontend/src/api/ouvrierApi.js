@@ -28,3 +28,9 @@ export const deleteOuvrier = async (id) => {
   const response = await axiosInstance.delete(`/ouvriers/${id}`);
   return response.data;
 };
+
+
+export const getOuvriersDisponibles = async (params = {}) => {
+  const response = await axiosInstance.get('/ouvriers/disponibles', { params });
+  return response.data;
+};

@@ -1,12 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { getAffectationById, deleteAffectation } from '../api/affectationApi';
+import { getAffectationById, deleteAffectation, validerAffectation, rejeterAffectation } from '../api/affectationApi';
+// ⚠️ Adaptez ce chemin si votre hook d'authentification s'appelle
+// différemment (comme dans TacheDetailPage / PointageDetailPage). Il doit
+// exposer l'utilisateur connecté avec sa propriété `role`.
+import useAuth from '../hooks/useAuth';
 
 const STATUT_LABELS = {
   PLANIFIEE: 'Planifiée',
   EN_COURS: 'En cours',
   TERMINEE: 'Terminée',
   ANNULEE: 'Annulée',
+  EN_ATTENTE_VALIDATION: 'En attente de validation',
+  REJETEE: 'Rejetée',
 };
 
 const STATUT_BADGE_CLASS = {
@@ -14,20 +20,31 @@ const STATUT_BADGE_CLASS = {
   EN_COURS: 'badge badge--success',
   TERMINEE: 'badge badge--neutral',
   ANNULEE: 'badge badge--danger',
+  EN_ATTENTE_VALIDATION: 'badge badge--warning',
+  REJETEE: 'badge badge--danger',
 };
 
 const AffectationDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const role = user?.role;
+
   const [affectation, setAffectation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
     getAffectationById(id)
       .then(setAffectation)
       .catch(() => setError('Impossible de charger cette affectation.'))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const handleDelete = async () => {
@@ -37,9 +54,39 @@ const AffectationDetailPage = () => {
     }
   };
 
+  const handleValider = async () => {
+    if (!window.confirm('Valider cette affectation ?')) return;
+    setActionLoading(true);
+    try {
+      await validerAffectation(id);
+      load();
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Erreur lors de la validation');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejeter = async () => {
+    const motif = window.prompt('Motif du rejet (optionnel) :', '');
+    if (motif === null) return;
+    setActionLoading(true);
+    try {
+      await rejeterAffectation(id, motif);
+      load();
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Erreur lors du rejet');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   if (loading) return <div className="loading">Chargement...</div>;
   if (error) return <div className="error-banner">{error}</div>;
   if (!affectation) return null;
+
+  const isPending = affectation.statut === 'EN_ATTENTE_VALIDATION';
+  const canValiderOuRejeter = (role === 'CHEF_PROJET' || role === 'ADMIN') && isPending;
 
   return (
     <div className="affectation-detail-page">
@@ -49,6 +96,18 @@ const AffectationDetailPage = () => {
           {STATUT_LABELS[affectation.statut] || affectation.statut}
         </span>
       </div>
+
+      {isPending && (
+        <div className="info-banner">
+          ⏳ Cette affectation attend la validation du Chef de Projet.
+        </div>
+      )}
+
+      {affectation.statut === 'REJETEE' && affectation.rejectionReason && (
+        <div className="error-banner">
+          ⚠️ Affectation rejetée. Motif : {affectation.rejectionReason}
+        </div>
+      )}
 
       <div className="chantier-card" style={{ maxWidth: 560 }}>
         <div className="chantier-body">
@@ -80,6 +139,17 @@ const AffectationDetailPage = () => {
             <strong>Date fin :</strong> {affectation.dateFin || '—'}
           </p>
         </div>
+
+        {canValiderOuRejeter && (
+          <div className="status-actions" style={{ padding: '0 16px 16px' }}>
+            <button type="button" className="btn-primary" disabled={actionLoading} onClick={handleValider}>
+              ✔ Valider
+            </button>
+            <button type="button" className="btn-danger" disabled={actionLoading} onClick={handleRejeter}>
+              ✘ Rejeter
+            </button>
+          </div>
+        )}
 
         <div className="chantier-footer">
           <Link to={`/affectations/${affectation.id}/modifier`} className="btn-edit">

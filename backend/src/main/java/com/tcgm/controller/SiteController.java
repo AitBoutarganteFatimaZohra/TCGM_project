@@ -16,6 +16,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/sites")
@@ -30,15 +31,13 @@ public class SiteController {
         return new ResponseEntity<>(siteService.createSite(request), HttpStatus.CREATED);
     }
 
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER', 'AGENT_SAISIE')")
     public ResponseEntity<SiteDetailResponse> getSiteById(@PathVariable Long id) {
         return ResponseEntity.ok(siteService.getSiteById(id));
     }
 
-    // ⚠️ ÉTENDU (§6.3 cahier des charges) : ajout des filtres période
-    // (startDate/endDate) et responsable (responsableId, tous rôles
-    // confondus). Les dates sont attendues au format yyyy-MM-dd.
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', 'MAGASINIER', 'AGENT_SAISIE')")
     public ResponseEntity<Page<SiteResponse>> getAllSites(
@@ -64,6 +63,7 @@ public class SiteController {
     }
 
     @DeleteMapping("/{id}")
+
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteSite(@PathVariable Long id) {
         siteService.deleteSite(id);
@@ -77,8 +77,26 @@ public class SiteController {
         return ResponseEntity.ok(siteService.updateSiteStatus(id, status));
     }
 
+    // ⚠️ NOUVEAU — Étape 2 (§5) : Administrateur valide
+    @PostMapping("/{id}/valider-modification")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<SiteResponse> validerModification(@PathVariable Long id) {
+        return ResponseEntity.ok(siteService.validerModificationSite(id));
+    }
+
+    // ⚠️ NOUVEAU — rejet par Administrateur
+    @PostMapping("/{id}/rejeter-modification")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<SiteResponse> rejeterModification(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body) {
+        String motif = body != null ? body.get("motif") : null;
+        return ResponseEntity.ok(siteService.rejeterModificationSite(id, motif));
+    }
+
     @GetMapping("/my-sites")
     @PreAuthorize("isAuthenticated()")
+
     public ResponseEntity<Page<SiteResponse>> getMySites(Pageable pageable) {
         return ResponseEntity.ok(siteService.getMySites(pageable));
     }

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import useAuth from '../hooks/useAuth';
 import useChantiers from '../hooks/useChantiers';
 import ChantierMap from '../components/ChantierMap';
 import { getSiteStats } from '../api/statistiqueApi';
+import { validerModificationSite, rejeterModificationSite } from '../api/chantierApi';
 
 const STATUS_LABELS = {
   PLANIFIE: 'Planifié',
@@ -20,18 +22,28 @@ const formatUser = (user) =>
 const ChantierDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const { fetchChantierById, removeChantier, loading } = useChantiers();
   const [chantier, setChantier] = useState(null);
   const [error, setError] = useState(null);
 
-  // ⚠️ NOUVEAU : suivi d'avancement (§9 cahier des charges)
   const [stats, setStats] = useState(null);
   const [statsError, setStatsError] = useState(null);
 
-  useEffect(() => {
+
+  const [showValidation, setShowValidation] = useState(null); // 'valider' | 'rejeter' | null
+  const [motif, setMotif] = useState('');
+  const [validating, setValidating] = useState(false);
+
+  const load = () =>
     fetchChantierById(id)
       .then(setChantier)
       .catch(() => setError("Impossible de charger ce chantier."));
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => {
@@ -51,13 +63,32 @@ const ChantierDetailPage = () => {
       await removeChantier(id);
       navigate('/chantiers');
     }
+
+  };
+
+  const handleValidation = async () => {
+    setValidating(true);
+    try {
+      if (showValidation === 'valider') {
+        await validerModificationSite(id);
+      } else {
+        await rejeterModificationSite(id, motif || null);
+      }
+      setShowValidation(null);
+      setMotif('');
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Erreur lors de la validation.');
+    } finally {
+      setValidating(false);
+    }
   };
 
   if (loading && !chantier) {
     return <div className="loading">Chargement du chantier...</div>;
   }
 
-  if (error) {
+  if (error && !chantier) {
     return <div className="error-banner">❌ {error}</div>;
   }
 
@@ -65,9 +96,13 @@ const ChantierDetailPage = () => {
     return null;
   }
 
+
   const tauxAvancement = stats?.tauxAvancement ?? 0;
   const tachesTerminees = stats?.tachesTerminees ?? 0;
   const totalTachesStats = stats?.totalTaches ?? chantier.totalTaches ?? 0;
+
+  const hasPendingModification =
+    !!chantier.pendingStatus || !!chantier.pendingStartDate || !!chantier.pendingEndDate;
 
   return (
     <div className="chantiers-page">
@@ -85,6 +120,61 @@ const ChantierDetailPage = () => {
         </div>
       </div>
 
+      {error && <div className="error-banner">❌ {error}</div>}
+
+      {/* Modification majeure en attente */}
+      {hasPendingModification && (
+        <div className="error-banner" style={{ background: '#e0f2fe', color: '#0369a1', borderColor: '#bae6fd', marginBottom: 20 }}>
+          Modification en attente de validation par l'Administrateur :
+          {chantier.pendingStatus && (
+            <> Statut → <strong>{STATUS_LABELS[chantier.pendingStatus] || chantier.pendingStatus}</strong>. </>
+          )}
+
+          {chantier.pendingStartDate && <> Nouvelle date de début : <strong>{formatDate(chantier.pendingStartDate)}</strong>. </>}
+          {chantier.pendingEndDate && <> Nouvelle date de fin : <strong>{formatDate(chantier.pendingEndDate)}</strong>. </>}
+        </div>
+      )}
+
+      {!hasPendingModification && chantier.motifRejet && (
+        <div className="error-banner" style={{ marginBottom: 20 }}>
+          ❌ La dernière modification majeure proposée a été rejetée. Motif : {chantier.motifRejet}
+        </div>
+      )}
+
+      {/* Panneau Administrateur : valider ou rejeter */}
+      {isAdmin && hasPendingModification && (
+        <div className="chantier-card" style={{ maxWidth: 620, marginBottom: 20 }}>
+          {showValidation ? (
+            <div className="form-group">
+              <label>{showValidation === 'valider' ? 'Confirmation' : 'Motif du rejet'}</label>
+              <textarea
+                value={motif}
+                onChange={(e) => setMotif(e.target.value)}
+                placeholder={showValidation === 'valider' ? 'Commentaire éventuel...' : 'Expliquez le motif du rejet...'}
+              />
+              <div className="form-actions">
+                <button className="btn-primary" onClick={handleValidation} disabled={validating}>
+                  {validating ? 'Traitement...' : `Confirmer ${showValidation === 'valider' ? 'la validation' : 'le rejet'}`}
+                </button>
+                <button className="btn-ghost" onClick={() => { setShowValidation(null); setMotif(''); }}>
+                  Annuler
+                </button>
+              </div>
+            </div>
+          ) : (
+
+            <div className="chantier-footer" style={{ borderTop: 'none', paddingTop: 0 }}>
+              <button className="btn-primary" onClick={() => setShowValidation('valider')}>
+                ✓ Valider la modification
+              </button>
+              <button className="btn-delete" onClick={() => setShowValidation('rejeter')}>
+                ✕ Rejeter la modification
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="kpi-row">
         <div className="kpi">
           <div className="num">{chantier.totalTaches ?? 0}</div>
@@ -100,12 +190,12 @@ const ChantierDetailPage = () => {
         </div>
       </div>
 
-      {/* ⚠️ NOUVEAU : bloc suivi d'avancement */}
       <div className="chantier-card" style={{ maxWidth: 620, marginBottom: 20 }}>
         <p style={{ marginBottom: 8 }}><strong>Avancement du chantier</strong></p>
         {statsError ? (
           <p style={{ color: '#8b8580', fontSize: 13 }}>{statsError}</p>
         ) : (
+
           <>
             <div
               style={{
@@ -139,6 +229,7 @@ const ChantierDetailPage = () => {
         <p><strong>Date de début:</strong> {formatDate(chantier.startDate)}</p>
         <p><strong>Date de fin prévisionnelle:</strong> {formatDate(chantier.endDate)}</p>
 
+
         <hr style={{ border: 'none', borderTop: '1px solid #f3f4f6', margin: '8px 0' }} />
 
         <p><strong>Client:</strong> {chantier.client?.name || 'N/A'}
@@ -170,6 +261,7 @@ const ChantierDetailPage = () => {
               </thead>
               <tbody>
                 {chantier.taches.map((t) => (
+
                   <tr key={t.id}>
                     <td>{t.title}</td>
                     <td>{t.status}</td>
@@ -202,6 +294,7 @@ const ChantierDetailPage = () => {
             </table>
           </div>
         </>
+
       )}
     </div>
   );

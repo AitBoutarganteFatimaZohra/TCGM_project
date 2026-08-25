@@ -1,5 +1,6 @@
 package com.tcgm.controller;
 
+import com.tcgm.dto.request.AffectationRejetRequest;
 import com.tcgm.dto.request.AffectationRequest;
 import com.tcgm.dto.response.AffectationResponse;
 import com.tcgm.service.AffectationService;
@@ -10,6 +11,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -21,8 +24,12 @@ public class AffectationController {
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
-    public ResponseEntity<AffectationResponse> createAffectation(@Valid @RequestBody AffectationRequest request) {
-        return new ResponseEntity<>(affectationService.createAffectation(request), HttpStatus.CREATED);
+    public ResponseEntity<AffectationResponse> createAffectation(
+            @Valid @RequestBody AffectationRequest request,
+            Authentication authentication) {
+        return new ResponseEntity<>(
+                affectationService.createAffectation(request, extractRole(authentication)),
+                HttpStatus.CREATED);
     }
 
     @GetMapping("/{id}")
@@ -55,11 +62,37 @@ public class AffectationController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Override direct réservé à l'Administrateur : contourne le circuit de
+     * validation. Le Chef de Projet doit désormais passer par
+     * /valider ou /rejeter pour traiter une demande EN_ATTENTE_VALIDATION.
+     */
     @PatchMapping("/{id}/statut")
-    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<AffectationResponse> updateStatut(@PathVariable Long id,
                                                               @RequestParam String statut) {
         return ResponseEntity.ok(affectationService.updateStatut(id, statut));
+    }
+
+    // =========================================================
+    // CIRCUIT DE VALIDATION : Chef de Chantier -> Chef de Projet
+    // =========================================================
+
+    @PostMapping("/{id}/valider")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET')")
+    public ResponseEntity<AffectationResponse> validerAffectation(
+            @PathVariable Long id,
+            Authentication authentication) {
+        return ResponseEntity.ok(affectationService.validerAffectation(id, extractRole(authentication)));
+    }
+
+    @PostMapping("/{id}/rejeter")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET')")
+    public ResponseEntity<AffectationResponse> rejeterAffectation(
+            @PathVariable Long id,
+            @RequestBody(required = false) AffectationRejetRequest request,
+            Authentication authentication) {
+        return ResponseEntity.ok(affectationService.rejeterAffectation(id, request, extractRole(authentication)));
     }
 
     @GetMapping("/ouvrier/{ouvrierId}/encours")
@@ -80,5 +113,19 @@ public class AffectationController {
     public ResponseEntity<Page<AffectationResponse>> getAffectationsByOuvrier(@PathVariable Long ouvrierId,
                                                                                Pageable pageable) {
         return ResponseEntity.ok(affectationService.getAffectationsByOuvrier(ouvrierId, pageable));
+    }
+
+    // =========================================================
+    // UTILITAIRE
+    // =========================================================
+
+    private String extractRole(Authentication authentication) {
+        if (authentication == null) return null;
+        return authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .filter(a -> a.startsWith("ROLE_"))
+                .map(a -> a.substring(5))
+                .findFirst()
+                .orElse(null);
     }
 }
