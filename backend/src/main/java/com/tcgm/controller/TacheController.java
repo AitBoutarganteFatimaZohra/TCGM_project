@@ -2,8 +2,6 @@ package com.tcgm.controller;
 
 import com.tcgm.dto.request.TacheCreateRequest;
 import com.tcgm.dto.request.TacheUpdateRequest;
-import com.tcgm.dto.request.TacheSoumissionRequest;
-import com.tcgm.dto.request.TacheRejetRequest;
 import com.tcgm.dto.response.TacheResponse;
 import com.tcgm.dto.response.TacheDetailResponse;
 import com.tcgm.service.TacheService;
@@ -11,10 +9,14 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/taches")
@@ -28,6 +30,7 @@ public class TacheController {
     public ResponseEntity<TacheResponse> createTache(
             @Valid @RequestBody TacheCreateRequest request) {
         return new ResponseEntity<>(tacheService.createTache(request), HttpStatus.CREATED);
+
     }
 
     @GetMapping("/{id}")
@@ -61,53 +64,47 @@ public class TacheController {
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * Override direct réservé à l'Administrateur : contourne le circuit de
-     * validation. Le Chef de Chantier doit désormais passer par
-     * /soumettre, et le Chef de Projet par /valider ou /rejeter.
-     */
+
+    // 🔧 MODIFIÉ : Chef de Chantier retiré — il passe désormais par
+    // /proposer-modification. Réservé à Admin/Chef de Projet (les
+    // validateurs eux-mêmes n'ont pas besoin de validation).
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET')")
     public ResponseEntity<TacheResponse> updateTacheStatus(
             @PathVariable Long id,
             @RequestParam String status) {
         return ResponseEntity.ok(tacheService.updateTacheStatus(id, status));
     }
 
-    // =========================================================
-    // CIRCUIT DE VALIDATION : Chef de Chantier -> Chef de Projet
-    // =========================================================
-
-    /**
-     * Étape 1 : le Chef de Chantier soumet un changement de statut et/ou
-     * de date prévue. La tâche passe en EN_ATTENTE_VALIDATION.
-     */
-    @PostMapping("/{id}/soumettre")
+    // ⚠️ NOUVEAU — Étape 1 (§2) : Chef de Chantier propose
+    @PostMapping("/{id}/proposer-modification")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_CHANTIER')")
-    public ResponseEntity<TacheResponse> soumettreTache(
+    public ResponseEntity<TacheResponse> proposerModification(
             @PathVariable Long id,
-            @RequestBody TacheSoumissionRequest request) {
-        return ResponseEntity.ok(tacheService.soumettreTache(id, request));
+            @RequestBody Map<String, String> body) {
+        String proposedStatus = body.get("status");
+        LocalDateTime proposedPlannedDate = body.get("plannedDate") != null
+                ? LocalDateTime.parse(body.get("plannedDate"))
+                : null;
+        return ResponseEntity.ok(tacheService.proposerModification(id, proposedStatus, proposedPlannedDate));
     }
 
-    /**
-     * Étape 2a : le Chef de Projet valide la demande en attente.
-     */
-    @PostMapping("/{id}/valider")
+    // ⚠️ NOUVEAU — Étape 2 : Chef de Projet valide
+    @PostMapping("/{id}/valider-modification")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET')")
-    public ResponseEntity<TacheResponse> validerTache(@PathVariable Long id) {
-        return ResponseEntity.ok(tacheService.validerTache(id));
+    public ResponseEntity<TacheResponse> validerModification(@PathVariable Long id) {
+        return ResponseEntity.ok(tacheService.validerModification(id));
     }
 
-    /**
-     * Étape 2b : le Chef de Projet rejette la demande en attente.
-     */
-    @PostMapping("/{id}/rejeter")
+
+    // ⚠️ NOUVEAU — rejet par Chef de Projet
+    @PostMapping("/{id}/rejeter-modification")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_PROJET')")
-    public ResponseEntity<TacheResponse> rejeterTache(
+    public ResponseEntity<TacheResponse> rejeterModification(
             @PathVariable Long id,
-            @RequestBody(required = false) TacheRejetRequest request) {
-        return ResponseEntity.ok(tacheService.rejeterTache(id, request));
+            @RequestBody(required = false) Map<String, String> body) {
+        String motif = body != null ? body.get("motif") : null;
+        return ResponseEntity.ok(tacheService.rejeterModification(id, motif));
     }
 
     @PostMapping("/{tacheId}/ouvriers/{ouvrierId}")
@@ -132,6 +129,7 @@ public class TacheController {
     public ResponseEntity<Page<TacheResponse>> getTachesByTravaux(
             @PathVariable Long travauxId,
             Pageable pageable) {
+
         return ResponseEntity.ok(tacheService.getTachesByTravaux(travauxId, pageable));
     }
 }

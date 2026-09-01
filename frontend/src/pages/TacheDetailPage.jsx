@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import useTaches from '../hooks/useTaches';
-// ⚠️ Adaptez ce chemin/nom si votre hook d'authentification s'appelle
-// différemment dans le projet (ex: '../context/AuthContext', '../hooks/useAuth'...).
-// Il doit exposer l'utilisateur connecté avec sa propriété `role`
-// (ex: 'ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER', ...), comme dans PointageDetailPage.
 import useAuth from '../hooks/useAuth';
-import { updateTacheStatus, retirerOuvrier, soumettreTache, validerTache, rejeterTache } from '../api/tacheApi';
+import useTaches from '../hooks/useTaches';
+import {
+  updateTacheStatus,
+  affecterOuvrier,
+  retirerOuvrier,
+  proposerModificationTache,
+  validerModificationTache,
+  rejeterModificationTache,
+} from '../api/tacheApi';
+import { getOuvriers } from '../api/ouvrierApi';
 
 const STATUTS = [
   { value: 'PLANIFIEE', label: 'Planifiée' },
@@ -20,16 +24,9 @@ const getStatutBadgeClass = (status) => {
       return 'badge--success';
     case 'EN_COURS':
       return 'badge--warning';
-    case 'EN_ATTENTE_VALIDATION':
-      return 'badge--pending';
     default:
       return 'badge--info';
   }
-};
-
-const getStatutLabel = (status) => {
-  if (status === 'EN_ATTENTE_VALIDATION') return 'En attente de validation';
-  return STATUTS.find((s) => s.value === status)?.label || status || '—';
 };
 
 const formatDateTime = (dateStr) => {
@@ -43,21 +40,38 @@ const formatDateTime = (dateStr) => {
   });
 };
 
+const ROLES_VALIDATION = ['ADMIN', 'CHEF_PROJET'];
+const ROLES_PROPOSITION = ['ADMIN', 'CHEF_CHANTIER'];
+// Rôles autorisés à affecter/retirer un ouvrier d'une tâche (aligné sur le @PreAuthorize backend)
+const ROLES_AFFECTATION = ['ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER'];
+
 const TacheDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { fetchTacheById, removeTache, loading, error } = useTaches();
   const { user } = useAuth();
-  const role = user?.role;
+  const { fetchTacheById, removeTache, loading, error } = useTaches();
+
+  const canValidate = ROLES_VALIDATION.includes(user?.role);
+  const canPropose = ROLES_PROPOSITION.includes(user?.role);
+  const canAffecter = ROLES_AFFECTATION.includes(user?.role);
 
   const [tache, setTache] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
 
-  // Formulaire de soumission (Chef de Chantier)
-  const [showSoumettreForm, setShowSoumettreForm] = useState(false);
   const [proposedStatus, setProposedStatus] = useState('');
-  const [proposedPlannedDate, setProposedPlannedDate] = useState('');
+  const [proposedDate, setProposedDate] = useState('');
+  const [proposing, setProposing] = useState(false);
+
+  const [showValidation, setShowValidation] = useState(null); // 'valider' | 'rejeter' | null
+  const [motif, setMotif] = useState('');
+  const [validating, setValidating] = useState(false);
+
+  // ⚠️ Affectation d'ouvriers à la tâche
+  const [availableOuvriers, setAvailableOuvriers] = useState([]);
+  const [selectedOuvrierId, setSelectedOuvrierId] = useState('');
+  const [affecting, setAffecting] = useState(false);
+  const [ouvriersLoading, setOuvriersLoading] = useState(false);
 
   const loadTache = async () => {
     try {
@@ -68,11 +82,29 @@ const TacheDetailPage = () => {
     }
   };
 
+  const loadOuvriers = async () => {
+    setOuvriersLoading(true);
+    try {
+      const data = await getOuvriers({ size: 500 });
+      setAvailableOuvriers(data.content || data || []);
+    } catch (err) {
+      console.error('Erreur lors du chargement des ouvriers', err);
+    } finally {
+      setOuvriersLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadTache();
+    loadOuvriers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // Override direct — Admin uniquement
+  const isPendingValidation = !!(tache?.proposedStatus || tache?.proposedPlannedDate);
+
+  const affectedIds = new Set((tache?.ouvriers || []).map((o) => o.id));
+  const selectableOuvriers = availableOuvriers.filter((o) => !affectedIds.has(o.id));
+
   const handleStatusChange = async (newStatus) => {
     setStatusUpdating(true);
     try {
@@ -85,56 +117,41 @@ const TacheDetailPage = () => {
     }
   };
 
-  // Étape 1 — Chef de Chantier soumet un changement pour validation
-  const handleSoumettre = async (e) => {
+  const handleProposer = async (e) => {
     e.preventDefault();
-    if (!proposedStatus && !proposedPlannedDate) {
-      alert('Indiquez un nouveau statut et/ou une nouvelle date prévue');
-      return;
-    }
-    setStatusUpdating(true);
+    if (!proposedStatus && !proposedDate) return;
+
+    setProposing(true);
     try {
-      await soumettreTache(id, {
-        proposedStatus: proposedStatus || undefined,
-        proposedPlannedDate: proposedPlannedDate || undefined,
+      await proposerModificationTache(id, {
+        status: proposedStatus || undefined,
+        plannedDate: proposedDate ? `${proposedDate}T00:00:00` : undefined,
       });
-      setShowSoumettreForm(false);
       setProposedStatus('');
-      setProposedPlannedDate('');
+      setProposedDate('');
       await loadTache();
     } catch (err) {
-      alert(err?.response?.data?.message || 'Erreur lors de la soumission');
+      alert(err.response?.data?.message || 'Erreur lors de la proposition.');
     } finally {
-      setStatusUpdating(false);
+      setProposing(false);
     }
   };
 
-  // Étape 2a — Chef de Projet valide
-  const handleValider = async () => {
-    if (!window.confirm('Valider cette demande de changement ?')) return;
-    setStatusUpdating(true);
+  const handleValidation = async () => {
+    setValidating(true);
     try {
-      await validerTache(id);
+      if (showValidation === 'valider') {
+        await validerModificationTache(id);
+      } else {
+        await rejeterModificationTache(id, motif || null);
+      }
+      setShowValidation(null);
+      setMotif('');
       await loadTache();
     } catch (err) {
-      alert(err?.response?.data?.message || 'Erreur lors de la validation');
+      alert(err.response?.data?.message || 'Erreur lors de la validation.');
     } finally {
-      setStatusUpdating(false);
-    }
-  };
-
-  // Étape 2b — Chef de Projet rejette
-  const handleRejeter = async () => {
-    const motif = window.prompt('Motif du rejet (optionnel) :', '');
-    if (motif === null) return; // annulé
-    setStatusUpdating(true);
-    try {
-      await rejeterTache(id, motif);
-      await loadTache();
-    } catch (err) {
-      alert(err?.response?.data?.message || 'Erreur lors du rejet');
-    } finally {
-      setStatusUpdating(false);
+      setValidating(false);
     }
   };
 
@@ -146,6 +163,22 @@ const TacheDetailPage = () => {
       } catch (err) {
         alert('Erreur lors de la suppression');
       }
+    }
+  };
+
+  const handleAffecterOuvrier = async (e) => {
+    e.preventDefault();
+    if (!selectedOuvrierId) return;
+
+    setAffecting(true);
+    try {
+      await affecterOuvrier(id, selectedOuvrierId);
+      setSelectedOuvrierId('');
+      await loadTache();
+    } catch (err) {
+      alert(err.response?.data?.message || "Erreur lors de l'affectation de l'ouvrier");
+    } finally {
+      setAffecting(false);
     }
   };
 
@@ -177,18 +210,13 @@ const TacheDetailPage = () => {
 
   if (!tache) return null;
 
-  const isPending = tache.status === 'EN_ATTENTE_VALIDATION';
-  const canSoumettre = (role === 'CHEF_CHANTIER' || role === 'ADMIN') && !isPending;
-  const canValiderOuRejeter = (role === 'CHEF_PROJET' || role === 'ADMIN') && isPending;
-  const canOverrideAdmin = role === 'ADMIN' && !isPending;
-
   return (
     <div className="tache-detail-page">
       <div className="page-header">
         <h1>
           ✅ {tache.title}
           <span className={`badge ${getStatutBadgeClass(tache.status)}`} style={{ marginLeft: 12 }}>
-            {getStatutLabel(tache.status)}
+            {STATUTS.find((s) => s.value === tache.status)?.label || tache.status}
           </span>
         </h1>
         <div className="header-actions">
@@ -206,22 +234,79 @@ const TacheDetailPage = () => {
 
       {error && <div className="error-banner">❌ {error}</div>}
 
-      {isPending && (
-        <div className="info-banner">
-          ⏳ Cette tâche a une demande de changement en attente de validation par le Chef de Projet.
+      {isPendingValidation && (
+        <div className="error-banner" style={{ background: '#e0f2fe', color: '#0369a1', borderColor: '#bae6fd', marginBottom: 20 }}>
+          Modification en attente de validation par le Chef de Projet :
           {tache.proposedStatus && (
-            <> Nouveau statut proposé : <strong>{getStatutLabel(tache.proposedStatus)}</strong>.</>
+            <> Statut → <strong>{STATUTS.find((s) => s.value === tache.proposedStatus)?.label || tache.proposedStatus}</strong> (déjà appliqué, sera annulé en cas de rejet). </>
           )}
-          {tache.proposedPlannedDate && (
-            <> Nouvelle date proposée : <strong>{formatDateTime(tache.proposedPlannedDate)}</strong>.</>
+          {tache.proposedPlannedDate && <> Nouvelle date prévue : <strong>{formatDateTime(tache.proposedPlannedDate)}</strong> (pas encore appliquée). </>}
+        </div>
+      )}
+
+      {!isPendingValidation && tache.rejectionReason && (
+        <div className="error-banner" style={{ marginBottom: 20 }}>
+          ❌ La dernière proposition de modification a été rejetée. Motif : {tache.rejectionReason}
+        </div>
+      )}
+
+      {canValidate && isPendingValidation && (
+        <div className="detail-card" style={{ marginBottom: 20 }}>
+          {showValidation ? (
+            <div className="status-actions" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+              <label style={{ marginBottom: 6 }}>{showValidation === 'valider' ? 'Confirmation' : 'Motif du rejet'}</label>
+              <textarea
+                value={motif}
+                onChange={(e) => setMotif(e.target.value)}
+                placeholder={showValidation === 'valider' ? 'Commentaire éventuel...' : 'Expliquez le motif du rejet...'}
+                rows={3}
+              />
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button className="btn-primary" onClick={handleValidation} disabled={validating}>
+                  {validating ? 'Traitement...' : `Confirmer ${showValidation === 'valider' ? 'la validation' : 'le rejet'}`}
+                </button>
+                <button className="btn-secondary" onClick={() => { setShowValidation(null); setMotif(''); }}>
+                  Annuler
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn-primary" onClick={() => setShowValidation('valider')}>
+                ✓ Valider la modification
+              </button>
+              <button className="btn-danger" onClick={() => setShowValidation('rejeter')}>
+                ✕ Rejeter la modification
+              </button>
+            </div>
           )}
         </div>
       )}
 
-      {!isPending && tache.rejectionReason && (
-        <div className="error-banner">
-          ⚠️ Dernière demande rejetée. Motif : {tache.rejectionReason}
-        </div>
+      {canPropose && !isPendingValidation && (
+        <form className="detail-card" onSubmit={handleProposer} style={{ marginBottom: 20 }}>
+          <h2>Proposer une modification</h2>
+          <div className="status-actions" style={{ flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4 }}>Nouveau statut</label>
+              <select value={proposedStatus} onChange={(e) => setProposedStatus(e.target.value)} className="form-select">
+                <option value="">— Aucun changement —</option>
+                {STATUTS.filter((s) => s.value !== tache.status).map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4 }}>Nouvelle date prévue</label>
+              <input type="date" value={proposedDate} onChange={(e) => setProposedDate(e.target.value)} className="form-input" />
+            </div>
+          </div>
+          <div className="form-actions" style={{ marginTop: 12 }}>
+            <button type="submit" className="btn-primary" disabled={proposing || (!proposedStatus && !proposedDate)}>
+              {proposing ? 'Envoi...' : 'Soumettre pour validation'}
+            </button>
+          </div>
+        </form>
       )}
 
       <div className="detail-grid">
@@ -259,122 +344,66 @@ const TacheDetailPage = () => {
           </div>
         </div>
 
-        <div className="detail-card">
-          <h2>Statut &amp; validation</h2>
-
-          {/* Override direct — Admin uniquement */}
-          {canOverrideAdmin && (
-            <>
-              <p className="cell-subtext">Changement direct (Administrateur) :</p>
-              <div className="status-actions">
-                {STATUTS.map((s) => (
-                  <button
-                    key={s.value}
-                    type="button"
-                    className={`btn-status ${tache.status === s.value ? 'btn-status--active' : ''}`}
-                    disabled={statusUpdating || tache.status === s.value}
-                    onClick={() => handleStatusChange(s.value)}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          {/* Étape 1 — Chef de Chantier */}
-          {canSoumettre && role === 'CHEF_CHANTIER' && (
-            <>
-              {!showSoumettreForm ? (
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => {
-                    setProposedStatus(tache.status);
-                    setShowSoumettreForm(true);
-                  }}
-                >
-                  Soumettre un changement pour validation
-                </button>
-              ) : (
-                <form className="form-card" onSubmit={handleSoumettre}>
-                  <div className="form-group">
-                    <label className="form-label">Nouveau statut</label>
-                    <select
-                      className="form-select"
-                      value={proposedStatus}
-                      onChange={(e) => setProposedStatus(e.target.value)}
-                    >
-                      <option value="">— Ne pas changer —</option>
-                      {STATUTS.map((s) => (
-                        <option key={s.value} value={s.value}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Nouvelle date prévue</label>
-                    <input
-                      type="datetime-local"
-                      className="form-input"
-                      value={proposedPlannedDate}
-                      onChange={(e) => setProposedPlannedDate(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-actions">
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => setShowSoumettreForm(false)}
-                    >
-                      Annuler
-                    </button>
-                    <button type="submit" className="btn-primary" disabled={statusUpdating}>
-                      {statusUpdating ? 'Envoi...' : 'Soumettre pour validation'}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </>
-          )}
-
-          {/* Étape 2 — Chef de Projet */}
-          {canValiderOuRejeter && (
+        {canValidate && !isPendingValidation && (
+          <div className="detail-card">
+            <h2>Statut (changement direct)</h2>
             <div className="status-actions">
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={statusUpdating}
-                onClick={handleValider}
-              >
-                ✔ Valider
-              </button>
-              <button
-                type="button"
-                className="btn-danger"
-                disabled={statusUpdating}
-                onClick={handleRejeter}
-              >
-                ✘ Rejeter
-              </button>
+              {STATUTS.map((s) => (
+                <button
+                  key={s.value}
+                  type="button"
+                  className={`btn-status ${tache.status === s.value ? 'btn-status--active' : ''}`}
+                  disabled={statusUpdating || tache.status === s.value}
+                  onClick={() => handleStatusChange(s.value)}
+                >
+                  {s.label}
+                </button>
+              ))}
             </div>
-          )}
-
-          {!canOverrideAdmin && !canSoumettre && !canValiderOuRejeter && (
-            <p className="empty-inline">
-              {isPending
-                ? 'En attente de la décision du Chef de Projet.'
-                : 'Vous n\'avez pas de statut à faire évoluer sur cette tâche.'}
-            </p>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="detail-card detail-card--full">
           <h2>
             Ouvriers affectés
             <span className="counter-badge">{tache.totalOuvriers ?? 0}</span>
           </h2>
+
+          {/* ⚠️ Formulaire d'affectation d'un ouvrier à la tâche */}
+          {canAffecter && (
+            <form
+              onSubmit={handleAffecterOuvrier}
+              style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}
+            >
+              <select
+                value={selectedOuvrierId}
+                onChange={(e) => setSelectedOuvrierId(e.target.value)}
+                className="form-select"
+                disabled={ouvriersLoading || selectableOuvriers.length === 0}
+              >
+                <option value="">
+                  {ouvriersLoading
+                    ? 'Chargement des ouvriers...'
+                    : selectableOuvriers.length === 0
+                    ? 'Aucun ouvrier disponible'
+                    : '— Choisir un ouvrier —'}
+                </option>
+                {selectableOuvriers.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.firstName} {o.lastName} {o.cin ? `(${o.cin})` : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={affecting || !selectedOuvrierId}
+              >
+                {affecting ? 'Affectation...' : '＋ Affecter'}
+              </button>
+            </form>
+          )}
+
           {tache.ouvriers && tache.ouvriers.length > 0 ? (
             <table className="taches-table">
               <thead>
@@ -402,14 +431,16 @@ const TacheDetailPage = () => {
                     </td>
                     <td>{formatDateTime(o.assignedAt)}</td>
                     <td className="col-actions">
-                      <button
-                        type="button"
-                        className="icon-btn icon-btn--danger"
-                        title="Retirer"
-                        onClick={() => handleRetirerOuvrier(o.id, `${o.firstName} ${o.lastName}`)}
-                      >
-                        🗑
-                      </button>
+                      {canAffecter && (
+                        <button
+                          type="button"
+                          className="icon-btn icon-btn--danger"
+                          title="Retirer"
+                          onClick={() => handleRetirerOuvrier(o.id, `${o.firstName} ${o.lastName}`)}
+                        >
+                          🗑
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

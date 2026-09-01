@@ -9,7 +9,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,7 +30,21 @@ public interface AffectationRepository extends JpaRepository<Affectation, Long> 
     @Query("SELECT COUNT(a) > 0 FROM Affectation a WHERE a.ouvrier.id = :ouvrierId AND a.statut = 'EN_COURS'")
     boolean hasAffectationEnCours(@Param("ouvrierId") Long ouvrierId);
 
+    @Query("SELECT COUNT(a) > 0 FROM Affectation a WHERE a.ouvrier.id = :ouvrierId AND a.statut IN ('EN_COURS', 'EN_ATTENTE_VALIDATION')")
+    boolean hasAffectationActiveOuEnAttente(@Param("ouvrierId") Long ouvrierId);
+
     long countByChantierIdAndStatut(Long chantierId, StatutAffectation statut);
 
     long countByOuvrierIdAndStatut(Long ouvrierId, StatutAffectation statut);
+
+    @Query("SELECT COUNT(a) FROM Affectation a WHERE a.chantier.id IN :chantierIds AND a.statut = 'EN_ATTENTE_VALIDATION'")
+    long countPendingByChantierIds(@Param("chantierIds") List<Long> chantierIds);
+
+    // ⚠️ NOUVEAU : affectations d'un ouvrier, restreintes à un ensemble de
+    // chantiers (scoping par rôle). chantierIds = null → pas de restriction.
+    @Query("SELECT a FROM Affectation a WHERE a.ouvrier.id = :ouvrierId " +
+           "AND (:chantierIds IS NULL OR a.chantier.id IN :chantierIds)")
+    Page<Affectation> findByOuvrierIdAndChantierIdIn(@Param("ouvrierId") Long ouvrierId,
+                                                      @Param("chantierIds") List<Long> chantierIds,
+                                                      Pageable pageable);
 }

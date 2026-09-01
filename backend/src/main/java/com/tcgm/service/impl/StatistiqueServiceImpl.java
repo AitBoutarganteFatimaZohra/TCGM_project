@@ -34,7 +34,6 @@ public class StatistiqueServiceImpl implements StatistiqueService {
         if (securityUtils.isChefChantier()) {
             return getDashboardStatsForChefChantier();
         }
-        // ✅ NOUVEAU : Agent de Saisie (§1 cahier des charges)
         if (securityUtils.isAgentSaisie()) {
             return getDashboardStatsForAgentSaisie();
         }
@@ -77,6 +76,25 @@ public class StatistiqueServiceImpl implements StatistiqueService {
             pointagesStats.put(row[0].toString(), (Long) row[1]);
         }
         stats.put("pointagesByStatus", pointagesStats);
+
+        // ✅ CORRIGÉ : ces deux clés étaient calculées ailleurs
+        // (getOuvriersStats / getClientsStats) mais jamais ajoutées ici,
+        // alors que le Dashboard Admin les affiche bel et bien
+        // ("Ouvriers par spécialité", "Chantiers par client") — d'où les
+        // graphiques vides malgré des données présentes en base.
+        var ouvriersBySpecialite = ouvrierRepository.countOuvriersBySpecialite();
+        Map<String, Long> specialiteStats = new HashMap<>();
+        for (Object[] row : ouvriersBySpecialite) {
+            specialiteStats.put(row[0] != null ? row[0].toString() : "Non spécifié", (Long) row[1]);
+        }
+        stats.put("ouvriersBySpecialite", specialiteStats);
+
+        var sitesByClient = siteRepository.countSitesByClient();
+        Map<String, Long> clientStats = new HashMap<>();
+        for (Object[] row : sitesByClient) {
+            clientStats.put(row[0].toString(), (Long) row[1]);
+        }
+        stats.put("sitesByClient", clientStats);
 
         return stats;
     }
@@ -134,16 +152,6 @@ public class StatistiqueServiceImpl implements StatistiqueService {
 
     // =========================================================
     // DASHBOARD - AGENT DE SAISIE (scopé sur son chantier unique)
-    // §1 cahier des charges :
-    //   - totalSites = toujours 1
-    //   - totalPointages = pointages de son site
-    //   - totalUsers = utilisateurs associés à son site (chef de projet,
-    //     chef de chantier, magasinier, agent de saisie = lui-même)
-    //   - ouvriersActifs = ouvriers actifs de son chantier
-    //   - totalTaches = tâches en cours sur son chantier
-    //   - sitesByStatus = son chantier unique avec son statut
-    //   - tachesByStatus = répartition des tâches de son chantier
-    //   - ouvriersBySpecialite = composition de son équipe
     // =========================================================
     private Map<String, Object> getDashboardStatsForAgentSaisie() {
         Long siteId = securityUtils.getSiteIdAsAgentSaisie();
@@ -189,7 +197,6 @@ public class StatistiqueServiceImpl implements StatistiqueService {
             tachesByStatus.put(row[0].toString(), (Long) row[1]);
         }
         stats.put("tachesByStatus", tachesByStatus);
-        // "tâches en cours" affiché en KPI = uniquement le statut EN_COURS
         stats.put("totalTaches", tachesByStatus.getOrDefault("EN_COURS", 0L));
 
         Map<String, Long> ouvriersBySpecialite = new HashMap<>();

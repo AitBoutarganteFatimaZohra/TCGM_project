@@ -15,6 +15,7 @@ import com.tcgm.model.enums.StatutSite;
 import com.tcgm.repository.SiteRepository;
 import com.tcgm.repository.ClientRepository;
 import com.tcgm.repository.UserRepository;
+import com.tcgm.security.SecurityUtils;
 import com.tcgm.service.SiteService;
 import com.tcgm.service.JournalService;
 import com.tcgm.model.enums.TypeAction;
@@ -30,7 +31,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
-
 import java.util.Map;
 
 @Service
@@ -43,9 +43,11 @@ public class SiteServiceImpl implements SiteService {
     private final UserRepository userRepository;
     private final SiteMapper siteMapper;
     private final JournalService journalService;
+    // ⚠️ NOUVEAU : nécessaire pour le scoping Chef de Chantier
+    private final SecurityUtils securityUtils;
 
     // =========================================================
-    // ⚠️ NOUVEAU : rôle de l'utilisateur courant
+    // ⚠️ rôle de l'utilisateur courant
     // =========================================================
 
     private User getCurrentUserOrNull() {
@@ -63,7 +65,6 @@ public class SiteServiceImpl implements SiteService {
 
     @Override
     @Transactional
-
     public SiteResponse createSite(SiteCreateRequest request) {
         log.info("Création d'un nouveau site: {}", request.getName());
 
@@ -96,7 +97,6 @@ public class SiteServiceImpl implements SiteService {
 
         if (request.getChefChantierId() != null) {
             User chefChantier = userRepository.findById(request.getChefChantierId())
-
                 .orElseThrow(() -> new ResourceNotFoundException("Chef de chantier", request.getChefChantierId()));
             site.setChefChantier(chefChantier);
         }
@@ -129,7 +129,6 @@ public class SiteServiceImpl implements SiteService {
             throw new BadRequestException("Cette référence de site existe déjà");
         }
 
-
         if (request.getClientId() != null) {
             Client client = clientRepository.findById(request.getClientId())
                 .orElseThrow(() -> new ResourceNotFoundException("Client", request.getClientId()));
@@ -161,12 +160,11 @@ public class SiteServiceImpl implements SiteService {
         }
 
         // =========================================================
-        // ⚠️ NOUVEAU — Étape 1 (§5) : si c'est un Chef de Projet (pas
-
-        // Admin) qui change le statut et/ou les dates, on stocke la
-        // proposition dans les champs pending* au lieu de l'appliquer.
-        // On remet dans `request` la valeur ACTUELLE (pas null) pour ces
-        // 3 champs, afin que siteMapper.updateEntity ne les écrase pas.
+        // Si c'est un Chef de Projet (pas Admin) qui change le statut
+        // et/ou les dates, on stocke la proposition dans les champs
+        // pending* au lieu de l'appliquer. On remet dans `request` la
+        // valeur ACTUELLE (pas null) pour ces 3 champs, afin que
+        // siteMapper.updateEntity ne les écrase pas.
         // =========================================================
 
         User currentUser = getCurrentUserOrNull();
@@ -195,7 +193,6 @@ public class SiteServiceImpl implements SiteService {
                 request.setEndDate(site.getEndDate());
             }
             site.setMotifRejet(null);
-
         }
 
         siteMapper.updateEntity(site, request);
@@ -222,12 +219,12 @@ public class SiteServiceImpl implements SiteService {
         return siteMapper.toDetailResponse(site);
     }
 
+    // 🔧 CORRIGÉ : scoping par rôle — Chef de Chantier, Agent de Saisie et Magasinier
     @Override
     public Page<SiteResponse> getAllSites(String status, Long clientId, String search,
                                            LocalDateTime periodStart, LocalDateTime periodEnd,
                                            Long responsableId, Pageable pageable) {
         log.debug("Récupération de tous les sites");
-
 
         StatutSite statut = null;
         if (status != null) {
@@ -238,8 +235,34 @@ public class SiteServiceImpl implements SiteService {
             }
         }
 
+        // ⚠️ NOUVEAU : scoping par rôle — Chef de Chantier, Agent de Saisie
+        // et Magasinier ne voient que leurs propres chantiers.
+        List<Long> siteIds = null;
+
+        if (securityUtils.isChefChantier()) {
+            List<Long> chantierIds = securityUtils.getChantierIdsAsChefChantier();
+            if (chantierIds.isEmpty()) {
+                return Page.empty(pageable);
+            }
+            siteIds = chantierIds;
+
+        } else if (securityUtils.isAgentSaisie()) {
+            Long siteId = securityUtils.getSiteIdAsAgentSaisie();
+            if (siteId == null) {
+                return Page.empty(pageable);
+            }
+            siteIds = List.of(siteId);
+
+        } else if (securityUtils.isMagasinier()) {
+            List<Long> magasinierSiteIds = securityUtils.getChantierIdsAsMagasinier();
+            if (magasinierSiteIds.isEmpty()) {
+                return Page.empty(pageable);
+            }
+            siteIds = magasinierSiteIds;
+        }
+
         Page<Site> sites = siteRepository.findSitesWithFilters(
-            statut, clientId, search, periodStart, periodEnd, responsableId, pageable);
+            statut, clientId, search, periodStart, periodEnd, responsableId, siteIds, pageable);
         return sites.map(siteMapper::toResponse);
     }
 
@@ -261,7 +284,6 @@ public class SiteServiceImpl implements SiteService {
 
         siteRepository.delete(site);
         log.info("Site supprimé avec succès: {}", site.getName());
-
     }
 
     @Override
@@ -279,8 +301,6 @@ public class SiteServiceImpl implements SiteService {
             throw new BadRequestException("Statut invalide: " + status);
         }
 
-        // ⚠️ NOUVEAU : même logique que updateSite — un Chef de Projet
-        // (pas Admin) passe par la proposition en attente.
         User currentUser = getCurrentUserOrNull();
         boolean isChefProjetOnly = hasRole(currentUser, RoleName.CHEF_PROJET)
             && !hasRole(currentUser, RoleName.ADMIN);
@@ -294,7 +314,6 @@ public class SiteServiceImpl implements SiteService {
 
         site = siteRepository.save(site);
 
-
         journalService.logAction(
             TypeAction.MODIFICATION,
             "SITE",
@@ -307,10 +326,6 @@ public class SiteServiceImpl implements SiteService {
         log.info("Statut du site mis à jour avec succès: {}", site.getName());
         return siteMapper.toResponse(site);
     }
-
-    // =========================================================
-    // ⚠️ NOUVEAU — Étape 2 (§5) : Administrateur valide
-    // =========================================================
 
     @Override
     @Transactional
@@ -327,7 +342,6 @@ public class SiteServiceImpl implements SiteService {
         }
 
         if (site.getPendingStatus() != null) {
-
             site.setStatus(site.getPendingStatus());
             site.setPendingStatus(null);
         }
@@ -354,13 +368,8 @@ public class SiteServiceImpl implements SiteService {
         return siteMapper.toResponse(site);
     }
 
-    // =========================================================
-    // ⚠️ NOUVEAU — Administrateur rejette
-    // =========================================================
-
     @Override
     @Transactional
-
     public SiteResponse rejeterModificationSite(Long id, String motif) {
         Site site = siteRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Site", id));
@@ -393,7 +402,6 @@ public class SiteServiceImpl implements SiteService {
     }
 
     @Override
-
     public Page<SiteResponse> getMySites(Pageable pageable) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userRepository.findByEmail(email)
@@ -426,6 +434,5 @@ public class SiteServiceImpl implements SiteService {
         stats.put("sitesSuspendus", sitesSuspendus);
 
         return stats;
-
     }
 }

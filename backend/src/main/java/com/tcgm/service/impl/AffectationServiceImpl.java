@@ -11,6 +11,7 @@ import com.tcgm.model.enums.TypeAction;
 import com.tcgm.repository.AffectationRepository;
 import com.tcgm.repository.OuvrierRepository;
 import com.tcgm.repository.SiteRepository;
+import com.tcgm.security.SecurityUtils;
 import com.tcgm.service.AffectationService;
 import com.tcgm.service.JournalService;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +38,22 @@ public class AffectationServiceImpl implements AffectationService {
     private final OuvrierRepository ouvrierRepository;
     private final SiteRepository siteRepository;
     private final JournalService journalService;
+    // ⚠️ NOUVEAU
+    private final SecurityUtils securityUtils;
+
+    // =========================================================
+    // ⚠️ NOUVEAU — vérification d'appartenance au chantier
+    // =========================================================
+
+    private void checkChantierAccess(Long chantierId) {
+        if (!securityUtils.isChantierInScope(chantierId)) {
+            throw new AccessDeniedException("Vous n'avez pas accès à cette affectation (chantier hors de votre périmètre).");
+        }
+    }
+
+    private void checkAffectationAccess(Affectation affectation) {
+        checkChantierAccess(affectation.getChantier() != null ? affectation.getChantier().getId() : null);
+    }
 
     // =========================================================
     // CREATE
@@ -48,6 +65,9 @@ public class AffectationServiceImpl implements AffectationService {
         Site chantier = siteRepository.findById(request.getChantierId())
                 .orElseThrow(() ->
                         new RuntimeException("Chantier introuvable avec l'id : " + request.getChantierId()));
+
+        // ⚠️ NOUVEAU : un non-Admin ne peut créer que sur son propre périmètre
+        checkChantierAccess(chantier.getId());
 
         Ouvrier ouvrier = ouvrierRepository.findById(request.getOuvrierId())
                 .orElseThrow(() ->
@@ -69,8 +89,6 @@ public class AffectationServiceImpl implements AffectationService {
         boolean requiresValidation = ROLE_CHEF_CHANTIER.equals(creatingRole);
 
         if (requiresValidation) {
-            // Circuit de validation : le Chef de Chantier propose, la
-            // décision finale (EN_COURS ou REJETEE) appartient au Chef de Projet.
             affectation.setStatut(StatutAffectation.EN_ATTENTE_VALIDATION);
         } else if (request.getStatut() != null && !request.getStatut().isBlank()) {
             affectation.setStatut(StatutAffectation.valueOf(request.getStatut().toUpperCase()));
@@ -104,9 +122,13 @@ public class AffectationServiceImpl implements AffectationService {
                 .orElseThrow(() ->
                         new RuntimeException("Affectation introuvable avec l'id : " + id));
 
+        checkAffectationAccess(affectation); // ⚠️ NOUVEAU : sur l'ancien chantier
+
         Site chantier = siteRepository.findById(request.getChantierId())
                 .orElseThrow(() ->
                         new RuntimeException("Chantier introuvable avec l'id : " + request.getChantierId()));
+
+        checkChantierAccess(chantier.getId()); // ⚠️ NOUVEAU : sur le nouveau chantier
 
         Ouvrier ouvrier = ouvrierRepository.findById(request.getOuvrierId())
                 .orElseThrow(() ->
@@ -144,6 +166,9 @@ public class AffectationServiceImpl implements AffectationService {
         Affectation affectation = affectationRepository.findById(id)
                 .orElseThrow(() ->
                         new RuntimeException("Affectation introuvable avec l'id : " + id));
+
+        checkAffectationAccess(affectation); // ⚠️ NOUVEAU
+
         return toResponse(affectation);
     }
 
@@ -155,7 +180,22 @@ public class AffectationServiceImpl implements AffectationService {
     @Transactional(readOnly = true)
     public Page<AffectationResponse> getAllAffectations(Long chantierId, Long ouvrierId, String statut, Pageable pageable) {
 
+        // ⚠️ NOUVEAU : scoping par rôle
+        List<Long> scoped = securityUtils.getScopedChantierIds();
+        if (scoped != null && scoped.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        if (chantierId != null) {
+            checkChantierAccess(chantierId);
+        }
+
         List<Affectation> affectations = affectationRepository.findAll();
+
+        if (scoped != null) {
+            affectations = affectations.stream()
+                    .filter(a -> a.getChantier() != null && scoped.contains(a.getChantier().getId()))
+                    .toList();
+        }
 
         if (chantierId != null) {
             affectations = affectations.stream()
@@ -195,6 +235,8 @@ public class AffectationServiceImpl implements AffectationService {
                 .orElseThrow(() ->
                         new RuntimeException("Affectation introuvable avec l'id : " + id));
 
+        checkAffectationAccess(affectation); // ⚠️ NOUVEAU
+
         journalService.logAction(
                 TypeAction.SUPPRESSION,
                 "AFFECTATION",
@@ -207,7 +249,8 @@ public class AffectationServiceImpl implements AffectationService {
     }
 
     // =========================================================
-    // OVERRIDE DIRECT — ADMIN UNIQUEMENT
+    // OVERRIDE DIRECT — ADMIN UNIQUEMENT (pas de check : @PreAuthorize
+    // du controller réserve déjà cet endpoint à ADMIN)
     // =========================================================
 
     @Override
@@ -259,6 +302,8 @@ public class AffectationServiceImpl implements AffectationService {
         Affectation affectation = affectationRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Affectation introuvable avec l'id : " + id));
 
+        checkAffectationAccess(affectation); // ⚠️ NOUVEAU
+
         if (affectation.getStatut() != StatutAffectation.EN_ATTENTE_VALIDATION) {
             throw new IllegalStateException("Cette affectation n'a pas de demande de validation en attente");
         }
@@ -285,6 +330,8 @@ public class AffectationServiceImpl implements AffectationService {
     public AffectationResponse rejeterAffectation(Long id, AffectationRejetRequest request, String validatingRole) {
         Affectation affectation = affectationRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Affectation introuvable avec l'id : " + id));
+
+        checkAffectationAccess(affectation); // ⚠️ NOUVEAU
 
         if (affectation.getStatut() != StatutAffectation.EN_ATTENTE_VALIDATION) {
             throw new IllegalStateException("Cette affectation n'a pas de demande de validation en attente");
@@ -319,12 +366,14 @@ public class AffectationServiceImpl implements AffectationService {
     public AffectationResponse getAffectationEnCoursByOuvrier(Long ouvrierId) {
         Affectation affectation = affectationRepository.findAffectationEnCoursByOuvrier(ouvrierId)
                 .orElseThrow(() -> new RuntimeException("Aucune affectation en cours pour l'ouvrier : " + ouvrierId));
+        checkAffectationAccess(affectation); // ⚠️ NOUVEAU
         return toResponse(affectation);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<AffectationResponse> getAffectationsByChantier(Long chantierId, Pageable pageable) {
+        checkChantierAccess(chantierId); // ⚠️ NOUVEAU
         Page<Affectation> page = affectationRepository.findByChantierId(chantierId, pageable);
         return page.map(this::toResponse);
     }
@@ -332,7 +381,12 @@ public class AffectationServiceImpl implements AffectationService {
     @Override
     @Transactional(readOnly = true)
     public Page<AffectationResponse> getAffectationsByOuvrier(Long ouvrierId, Pageable pageable) {
-        Page<Affectation> page = affectationRepository.findByOuvrierId(ouvrierId, pageable);
+        // ⚠️ NOUVEAU : scoping par rôle
+        List<Long> scoped = securityUtils.getScopedChantierIds();
+        if (scoped != null && scoped.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        Page<Affectation> page = affectationRepository.findByOuvrierIdAndChantierIdIn(ouvrierId, scoped, pageable);
         return page.map(this::toResponse);
     }
 

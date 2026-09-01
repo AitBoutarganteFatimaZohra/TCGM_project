@@ -12,6 +12,7 @@ import {
   ScrollText,
   BarChart3,
   UserPlus,
+  User, // ⚠️ NOUVEAU
 } from 'lucide-react';
 import logo from '../../assets/images/Logo_TCGM.svg';
 import useAuth from '../../hooks/useAuth';
@@ -26,14 +27,12 @@ const menuItems = [
   { path: '/travaux', label: 'Travaux', Icon: Wrench },
   { path: '/affectations', label: 'Affectations', Icon: Pin },
   { path: '/pointage', label: 'Pointage', Icon: Clock },
-  // 🔧 CORRIGÉ : entrée manquante — sans elle, même un rôle autorisé
-  // dans ROUTE_ACCESS ne voyait jamais le lien (rien à filtrer).
-  // Ajoutée ici pour Chef de Chantier (voir accessConfig.js pour
-  // la liste complète des rôles autorisés sur /ressources).
   { path: '/ressources', label: 'Ressources', Icon: Package },
   { path: '/journal', label: 'Journal', Icon: ScrollText },
   { path: '/mon-journal-agent', label: 'Mon journal', Icon: ScrollText },
   { path: '/statistiques', label: 'Statistiques', Icon: BarChart3 },
+  // ⚠️ NOUVEAU : accessible à tous les rôles de la Sidebar
+  { path: '/mon-profil', label: 'Mon profil', Icon: User },
 ];
 
 const adminItem = {

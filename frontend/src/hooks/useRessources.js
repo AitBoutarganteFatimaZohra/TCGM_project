@@ -77,12 +77,29 @@ const useRessources = () => {
     }
   }, []);
 
+  /**
+   * 🔧 CORRIGÉ : retourne maintenant le résultat de deleteRessource(id).
+   * - Magasinier : la ressource est placée en attente de validation → le
+   *   backend renvoie son état à jour (200 + corps) → `result` est un objet.
+   * - Admin : suppression immédiate → le backend renvoie 204 sans contenu
+   *   → `result` est undefined/null → l'appelant peut détecter ce cas et
+   *   rediriger directement, au lieu de recharger une ressource qui n'existe
+   *   plus.
+   * On ne retire la ligne de `ressources` (liste) que si la ressource a
+   * réellement été supprimée (result falsy) ; sinon on la met à jour avec
+   * son nouvel état "en attente" pour refléter le badge dans la liste.
+   */
   const removeRessource = useCallback(async (id) => {
     setLoading(true);
     setError(null);
     try {
-      await deleteRessource(id);
-      setRessources((prev) => prev.filter((r) => r.id !== id));
+      const result = await deleteRessource(id);
+      if (!result) {
+        setRessources((prev) => prev.filter((r) => r.id !== id));
+      } else {
+        setRessources((prev) => prev.map((r) => (r.id === id ? result : r)));
+      }
+      return result;
     } catch (err) {
       setError(err?.response?.data?.message || 'Erreur lors de la suppression');
       throw err;

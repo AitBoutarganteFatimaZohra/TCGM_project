@@ -1,8 +1,10 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Package, ListChecks, ScrollText, User } from 'lucide-react';
+import { LayoutDashboard, Building2, Package, ListChecks, ScrollText, User } from 'lucide-react';
 
 const pillItems = [
   { path: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
+  // ⚠️ NOUVEAU : Magasinier peut voir ses chantiers (scopés côté backend)
+  { path: '/chantiers', label: 'Chantiers', Icon: Building2 },
   { path: '/ressources', label: 'Ressources', Icon: Package },
   { path: '/mes-taches', label: 'Tâches', Icon: ListChecks },
   { path: '/mon-journal', label: 'Journal', Icon: ScrollText },

@@ -47,53 +47,59 @@ public class RessourceController {
         return ResponseEntity.ok(ressourceService.getById(id));
     }
 
+    // ⚠️ MODIFIÉ : le rôle de l'utilisateur connecté est transmis au service
+    // pour déterminer si l'action doit passer par le circuit de validation
+    // (Magasinier) ou s'appliquer directement (Admin).
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'MAGASINIER')")
-    public ResponseEntity<RessourceResponse> create(@Valid @RequestBody RessourceCreateRequest request) {
-        return new ResponseEntity<>(ressourceService.create(request), HttpStatus.CREATED);
+    public ResponseEntity<RessourceResponse> create(
+            @Valid @RequestBody RessourceCreateRequest request,
+            Authentication authentication) {
+        return new ResponseEntity<>(ressourceService.create(request, extractRole(authentication)), HttpStatus.CREATED);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MAGASINIER')")
-    public ResponseEntity<RessourceResponse> update(@PathVariable Long id, @Valid @RequestBody RessourceUpdateRequest request) {
-        return ResponseEntity.ok(ressourceService.update(id, request));
+    public ResponseEntity<RessourceResponse> update(
+            @PathVariable Long id,
+            @Valid @RequestBody RessourceUpdateRequest request,
+            Authentication authentication) {
+        return ResponseEntity.ok(ressourceService.update(id, request, extractRole(authentication)));
     }
 
     @PatchMapping("/{id}/statut")
     @PreAuthorize("hasAnyRole('ADMIN', 'MAGASINIER')")
-    public ResponseEntity<RessourceResponse> updateStatut(@PathVariable Long id, @RequestBody Map<String, String> body) {
+    public ResponseEntity<RessourceResponse> updateStatut(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body,
+            Authentication authentication) {
         Ressource.StatutRessource statut = Ressource.StatutRessource.valueOf(body.get("statut"));
-        return ResponseEntity.ok(ressourceService.updateStatut(id, statut));
+        return ResponseEntity.ok(ressourceService.updateStatut(id, statut, extractRole(authentication)));
     }
 
     /**
-     * ⚠️ CHANGEMENT DE COMPORTEMENT : ne supprime plus immédiatement — place
-     * la ressource en attente de validation de suppression et renvoie son
-     * état à jour (200) au lieu d'un 204 sans contenu. Le frontend doit
-     * gérer le corps de la réponse (voir ressourceApi.js).
+     * Magasinier : place en attente de validation (200, corps = état "en attente").
+     * ⚠️ Admin : suppression IMMÉDIATE — le service renvoie null, on répond
+     * alors 204 No Content (même pattern que /valider pour une SUPPRESSION).
      */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MAGASINIER')")
-    public ResponseEntity<RessourceResponse> delete(@PathVariable Long id) {
-        return ResponseEntity.ok(ressourceService.delete(id));
+    public ResponseEntity<RessourceResponse> delete(@PathVariable Long id, Authentication authentication) {
+        RessourceResponse response = ressourceService.delete(id, extractRole(authentication));
+        if (response == null) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(response);
     }
 
     // =========================================================
     // CIRCUIT DE VALIDATION : Magasinier -> Chef de Chantier -> Chef de Projet
     // =========================================================
 
-    /**
-     * Valide l'action en attente, au niveau où elle se trouve actuellement
-     * (Chef de Chantier pour le niveau 1, Chef de Projet pour le niveau 2 —
-     * recours après un rejet niveau 1). Le rôle exact est vérifié côté
-     * service à partir du token de l'utilisateur connecté.
-     */
     @PostMapping("/{id}/valider")
     @PreAuthorize("hasAnyRole('ADMIN', 'CHEF_CHANTIER', 'CHEF_PROJET')")
     public ResponseEntity<RessourceResponse> valider(@PathVariable Long id, Authentication authentication) {
         RessourceResponse response = ressourceService.valider(id, extractRole(authentication));
-        // response == null signifie que l'action validée était une
-        // SUPPRESSION : la ressource a été définitivement effacée.
         if (response == null) {
             return ResponseEntity.noContent().build();
         }

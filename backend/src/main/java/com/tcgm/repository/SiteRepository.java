@@ -17,10 +17,6 @@ import java.util.Optional;
 @Repository
 public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificationExecutor<Site> {
 
-    // =========================================================
-    // RECHERCHES DE BASE
-    // =========================================================
-
     Page<Site> findByStatus(StatutSite status, Pageable pageable);
 
     Page<Site> findByClientId(Long clientId, Pageable pageable);
@@ -30,10 +26,6 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
     Optional<Site> findByReference(String reference);
 
     boolean existsByReference(String reference);
-
-    // =========================================================
-    // RECHERCHES PAR RESPONSABLE
-    // =========================================================
 
     @Query("SELECT s FROM Site s WHERE s.chefProjet.id = :userId")
     List<Site> findByChefProjetId(@Param("userId") Long userId);
@@ -53,29 +45,19 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
            "OR s.agentSaisie.id = :userId")
     List<Site> findSitesByUserId(@Param("userId") Long userId);
 
-    // =========================================================
-    // RECHERCHES DE BASE AVEC ID UNIQUEMENT (pour les selects)
-    // =========================================================
-
     @Query("SELECT s.id FROM Site s WHERE s.chefChantier.id = :userId")
     List<Long> findIdsByChefChantierId(@Param("userId") Long userId);
 
-    /**
-     * Trouver les IDs des sites dont l'utilisateur est agent de saisie.
-     * 🔧 CORRIGÉ : remplacé par une @Query explicite avec projection s.id.
-     * L'ancienne version en requête dérivée par nom de méthode
-     * (`List<Long> findIdsByAgentSaisieId(Long)`) était mal interprétée
-     * par Spring Data / Hibernate, qui retournait des entités Site
-     * complètes au lieu de Long → QueryTypeMismatchException ("Result
-     * type is 'Long' but the query returned a 'Site'") → 500 sur
-     * /api/statistiques/dashboard pour le rôle AGENT_SAISIE.
-     */
     @Query("SELECT s.id FROM Site s WHERE s.agentSaisie.id = :agentSaisieId")
     List<Long> findIdsByAgentSaisieId(@Param("agentSaisieId") Long agentSaisieId);
 
-    // =========================================================
-    // RECHERCHES AVEC PÉRIODE
-    // =========================================================
+    // ⚠️ NOUVEAU : IDs des chantiers dont l'utilisateur est Chef de Projet
+    @Query("SELECT s.id FROM Site s WHERE s.chefProjet.id = :chefProjetId")
+    List<Long> findIdsByChefProjetId(@Param("chefProjetId") Long chefProjetId);
+
+    // ⚠️ NOUVEAU : IDs des chantiers dont l'utilisateur est Magasinier
+    @Query("SELECT s.id FROM Site s WHERE s.magasinier.id = :magasinierId")
+    List<Long> findIdsByMagasinierId(@Param("magasinierId") Long magasinierId);
 
     @Query("SELECT s FROM Site s WHERE s.startDate BETWEEN :start AND :end " +
            "OR s.endDate BETWEEN :start AND :end")
@@ -89,10 +71,6 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
     @Query("SELECT s FROM Site s WHERE s.status = 'EN_COURS'")
     List<Site> findActiveSites();
 
-    // =========================================================
-    // STATISTIQUES
-    // =========================================================
-
     @Query("SELECT s.status, COUNT(s) FROM Site s GROUP BY s.status")
     List<Object[]> countSitesByStatus();
 
@@ -101,10 +79,6 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
 
     @Query("SELECT COUNT(s) FROM Site s WHERE s.status = :status")
     Long countByStatus(@Param("status") StatutSite status);
-
-    // =========================================================
-    // RECHERCHES AVANCÉES
-    // =========================================================
 
     @Query("SELECT s FROM Site s WHERE " +
            "(:status IS NULL OR s.status = :status) AND " +
@@ -115,18 +89,16 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
            "(:periodEnd IS NULL OR s.startDate IS NULL OR s.startDate <= :periodEnd) AND " +
            "(:responsableId IS NULL OR " +
            "(s.chefProjet.id = :responsableId OR s.chefChantier.id = :responsableId " +
-           "OR s.magasinier.id = :responsableId OR s.agentSaisie.id = :responsableId))")
+           "OR s.magasinier.id = :responsableId OR s.agentSaisie.id = :responsableId)) AND " +
+           "(:siteIds IS NULL OR s.id IN :siteIds)")
     Page<Site> findSitesWithFilters(@Param("status") StatutSite status,
                                     @Param("clientId") Long clientId,
                                     @Param("search") String search,
                                     @Param("periodStart") LocalDateTime periodStart,
                                     @Param("periodEnd") LocalDateTime periodEnd,
                                     @Param("responsableId") Long responsableId,
+                                    @Param("siteIds") List<Long> siteIds,
                                     Pageable pageable);
-
-    // =========================================================
-    // NOUVELLES MÉTHODES POUR TRAVAUX ET AFFECTATION
-    // =========================================================
 
     @Query("SELECT s FROM Site s LEFT JOIN FETCH s.client " +
            "LEFT JOIN FETCH s.chefProjet " +
@@ -156,4 +128,7 @@ public interface SiteRepository extends JpaRepository<Site, Long>, JpaSpecificat
     @Query("SELECT DISTINCT s FROM Site s LEFT JOIN FETCH s.travaux t LEFT JOIN FETCH t.taches")
     List<Site> findAllWithTravauxAndTaches();
 
+    @Query("SELECT COUNT(s) FROM Site s WHERE s.pendingStatus IS NOT NULL " +
+           "OR s.pendingStartDate IS NOT NULL OR s.pendingEndDate IS NOT NULL")
+    long countPendingModifications();
 }

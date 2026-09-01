@@ -1,10 +1,6 @@
 import axiosInstance from './axiosConfig';
 import { getTravauxByChantier } from './travauxApi';
 
-// =============================================================
-// TÂCHES
-// =============================================================
-
 export const getTaches = async (params = {}) => {
   const response = await axiosInstance.get('/taches', { params });
   return response.data;
@@ -30,45 +26,30 @@ export const deleteTache = async (id) => {
   return response.data;
 };
 
-/**
- * Override direct réservé à l'Administrateur (contourne le circuit de
- * validation). Le Chef de Chantier et le Chef de Projet doivent utiliser
- * soumettreTache / validerTache / rejeterTache ci-dessous.
- */
 export const updateTacheStatus = async (id, status) => {
   const response = await axiosInstance.patch(`/taches/${id}/status`, null, {
     params: { status },
   });
+
   return response.data;
 };
 
-// =============================================================
-// CIRCUIT DE VALIDATION : Chef de Chantier -> Chef de Projet
-// =============================================================
-
-/**
- * Étape 1 (Chef de Chantier) : soumet un changement de statut et/ou de
- * date prévue à la validation. payload: { proposedStatus, proposedPlannedDate }
- */
-export const soumettreTache = async (id, payload) => {
-  const response = await axiosInstance.post(`/taches/${id}/soumettre`, payload);
+// ⚠️ NOUVEAU
+export const proposerModificationTache = async (id, { status, plannedDate } = {}) => {
+  const response = await axiosInstance.post(`/taches/${id}/proposer-modification`, {
+    status: status || undefined,
+    plannedDate: plannedDate || undefined,
+  });
   return response.data;
 };
 
-/**
- * Étape 2a (Chef de Projet) : valide la demande en attente.
- */
-export const validerTache = async (id) => {
-  const response = await axiosInstance.post(`/taches/${id}/valider`);
+export const validerModificationTache = async (id) => {
+  const response = await axiosInstance.post(`/taches/${id}/valider-modification`);
   return response.data;
 };
 
-/**
- * Étape 2b (Chef de Projet) : rejette la demande en attente.
- * motif est optionnel.
- */
-export const rejeterTache = async (id, motif) => {
-  const response = await axiosInstance.post(`/taches/${id}/rejeter`, motif ? { motif } : {});
+export const rejeterModificationTache = async (id, motif) => {
+  const response = await axiosInstance.post(`/taches/${id}/rejeter-modification`, { motif });
   return response.data;
 };
 
@@ -82,9 +63,6 @@ export const retirerOuvrier = async (tacheId, ouvrierId) => {
   return response.data;
 };
 
-// =============================================================
-// TÂCHES — PAR SITE (via Travaux)
-// =============================================================
 
 export const getTachesBySite = async (siteId) => {
   if (!siteId) return [];

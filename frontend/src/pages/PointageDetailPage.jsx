@@ -26,6 +26,9 @@ import {
 const ROLES_VALIDATION = ['ADMIN', 'CHEF_PROJET', 'CHEF_CHANTIER'];
 // Rôles autorisés à modifier / soumettre un dossier "En attente"
 const ROLES_EDITION = ['ADMIN', 'CHEF_PROJET', 'AGENT_SAISIE'];
+// ⚠️ NOUVEAU — rôles autorisés à SUPPRIMER un dossier (distinct de l'édition :
+// le Chef de Projet peut modifier/soumettre mais pas supprimer)
+const ROLES_SUPPRESSION = ['ADMIN', 'AGENT_SAISIE'];
 
 const emptyLigne = {
   ouvrierId: '',
@@ -48,6 +51,7 @@ const PointageDetailPage = () => {
   const { user } = useAuth();
   const canValidate = ROLES_VALIDATION.includes(user?.role);
   const canEdit = ROLES_EDITION.includes(user?.role);
+  const canDelete = ROLES_SUPPRESSION.includes(user?.role); // ⚠️ NOUVEAU
 
   const [dossier, setDossier] = useState(null);
   const [ouvriers, setOuvriers] = useState([]);
@@ -236,7 +240,9 @@ const PointageDetailPage = () => {
           {isEditable && canEdit && (
             <Link to={`/pointage/${id}/modifier`} className="btn-edit">Modifier</Link>
           )}
-          {isEditable && canEdit && (
+          {/* 🔧 CORRIGÉ : suppression réservée à ROLES_SUPPRESSION (Admin + Agent Saisie),
+              plus à canEdit (qui incluait à tort le Chef de Projet) */}
+          {isEditable && canDelete && (
             <button className="btn-delete" onClick={handleDeleteDossier}>Supprimer</button>
           )}
           {isEditable && canEdit && (

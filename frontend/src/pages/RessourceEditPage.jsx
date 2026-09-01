@@ -1,13 +1,22 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useRessources from '../hooks/useRessources';
+import useAuth from '../hooks/useAuth';
 
 const RessourceEditPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { fetchRessourceById, editRessource, loading, error } = useRessources();
+  const { user } = useAuth();
   const [form, setForm] = useState(null);
   const [siteId, setSiteId] = useState(null);
+
+  // ⚠️ REDIRECTION SI CHEF DE CHANTIER
+  useEffect(() => {
+    if (user?.role === 'CHEF_CHANTIER') {
+      navigate('/ressources');
+    }
+  }, [user, navigate]);
 
   useEffect(() => {
     fetchRessourceById(id).then((data) => {
@@ -53,6 +62,20 @@ const RessourceEditPage = () => {
       // erreur déjà exposée via `error`
     }
   };
+
+  // ⚠️ SI CHEF DE CHANTIER, AFFICHER UN MESSAGE D'ACCÈS REFUSÉ
+  if (user?.role === 'CHEF_CHANTIER') {
+    return (
+      <div className="chantiers-page">
+        <div className="error-banner" style={{ marginTop: '2rem', padding: '1.5rem', fontSize: '1.1rem' }}>
+          ⛔ Accès refusé. Les Chefs de chantier ne peuvent pas modifier les ressources.
+        </div>
+        <button className="btn-view" onClick={() => navigate('/ressources')} style={{ marginTop: '1rem' }}>
+          Retour aux ressources
+        </button>
+      </div>
+    );
+  }
 
   if (!form) {
     return <div className="loading">Chargement de la ressource...</div>;

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import useAuth from '../../hooks/useAuth';
 import useTheme from '../../hooks/useTheme';
+import NotificationBell from './NotificationBell';
 import logoLight from '../../assets/images/Logo_TCGM.svg';
 import logoDark from '../../assets/images/tcgm-logo-dark.svg';
 
@@ -71,6 +72,9 @@ const Navbar = () => {
             </svg>
           )}
         </button>
+
+        {/* ⚠️ NOUVEAU : notifications temps réel des 4 circuits de validation */}
+        <NotificationBell />
 
         <div className="navbar__divider" />
 

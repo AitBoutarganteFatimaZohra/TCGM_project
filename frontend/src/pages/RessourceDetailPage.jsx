@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import useRessources from '../hooks/useRessources';
 import { validerRessource, rejeterRessource } from '../api/ressourceApi';
-// ⚠️ Adaptez ce chemin si besoin (même hook que TacheDetailPage/AffectationDetailPage).
 import useAuth from '../hooks/useAuth';
 
 const TYPE_LABELS = {
@@ -20,7 +19,7 @@ const STATUT_LABELS = {
 };
 
 const VALIDATION_LABELS = {
-  VALIDEE: null, // rien à afficher, état stable
+  VALIDEE: null,
   EN_ATTENTE_CHEF_CHANTIER: 'En attente de validation (Chef de Chantier)',
   EN_ATTENTE_CHEF_PROJET: 'En attente de validation (Chef de Projet — recours)',
   REJETEE: 'Rejetée définitivement',
@@ -42,6 +41,7 @@ const RessourceDetailPage = () => {
   const { fetchRessourceById, removeRessource, loading } = useRessources();
   const { user } = useAuth();
   const role = user?.role;
+  const isAdmin = role === 'ADMIN';
 
   const [ressource, setRessource] = useState(null);
   const [error, setError] = useState(null);
@@ -59,9 +59,23 @@ const RessourceDetailPage = () => {
   }, [id]);
 
   const handleDelete = async () => {
-    if (window.confirm('Soumettre la suppression de cette ressource pour validation ?')) {
-      await removeRessource(id);
+    const confirmMsg = isAdmin
+      ? 'Supprimer définitivement cette ressource ? Cette action est immédiate (Admin, sans validation).'
+      : 'Soumettre la suppression de cette ressource pour validation ?';
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const result = await removeRessource(id);
+      // ⚠️ NOUVEAU : si l'Admin supprime, le backend renvoie 204 (pas de
+      // contenu) — la ressource n'existe plus, on redirige directement
+      // au lieu de tenter de la recharger.
+      if (!result) {
+        navigate('/ressources');
+        return;
+      }
       load();
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Erreur lors de la suppression');
     }
   };
 
@@ -71,7 +85,6 @@ const RessourceDetailPage = () => {
     try {
       const result = await validerRessource(id);
       if (!result) {
-        // La ressource a été supprimée (validation d'une SUPPRESSION)
         navigate('/ressources');
         return;
       }
@@ -116,6 +129,9 @@ const RessourceDetailPage = () => {
     (isPendingNiveau1 && (role === 'CHEF_CHANTIER' || role === 'ADMIN')) ||
     (isPendingNiveau2 && (role === 'CHEF_PROJET' || role === 'ADMIN'));
 
+  const canEdit = role === 'MAGASINIER' || role === 'ADMIN';
+  const canDelete = role === 'MAGASINIER' || role === 'ADMIN';
+
   return (
     <div className="chantiers-page">
       <div className="page-header">
@@ -124,8 +140,14 @@ const RessourceDetailPage = () => {
           <span className="badge-specialite">{TYPE_LABELS[ressource.type] || ressource.type}</span>
         </div>
         <div className="chantier-footer" style={{ borderTop: 'none', paddingTop: 0 }}>
-          <Link to={`/ressources/${id}/modifier`} className="btn-edit">Modifier</Link>
-          <button onClick={handleDelete} className="btn-delete">Supprimer</button>
+          {canEdit && (
+            <Link to={`/ressources/${id}/modifier`} className="btn-edit">Modifier</Link>
+          )}
+
+          {canDelete && (
+            <button onClick={handleDelete} className="btn-delete">Supprimer</button>
+          )}
+
           <Link to="/ressources" className="btn-view">Retour</Link>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import useAuth from '../hooks/useAuth';
 import {
   getDossierPointageById,
   updateDossierPointage,
@@ -25,9 +26,14 @@ const isTimeRangeValid = (start, end) => {
   return new Date(start) < new Date(end);
 };
 
+// ✅ Rôles autorisés à modifier un pointage
+const ROLES_EDITION = ['ADMIN', 'CHEF_PROJET', 'AGENT_SAISIE'];
+
 const PointageEditPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canEdit = ROLES_EDITION.includes(user?.role);
 
   const [dossier, setDossier] = useState(null);
   const [ouvriers, setOuvriers] = useState([]);
@@ -68,6 +74,21 @@ const PointageEditPage = () => {
     if (!dossier?.site?.id) return;
     getTachesBySite(dossier.site.id).then(setTaches).catch(() => setTaches([]));
   }, [dossier?.site?.id]);
+
+  // ✅ Vérification des droits avant d'afficher la page
+  if (!canEdit && !loading) {
+    return (
+      <div className="pointage-edit-page">
+        <div className="page-header">
+          <h1>Modifier le pointage</h1>
+        </div>
+        <div className="error-banner">
+          ⛔ Vous n'avez pas le droit de modifier ce pointage.
+        </div>
+        <Link to={`/pointage/${id}`} className="btn-ghost">Retour au dossier</Link>
+      </div>
+    );
+  }
 
   const handleSaveNotes = async (e) => {
     e.preventDefault();
@@ -141,8 +162,6 @@ const PointageEditPage = () => {
 
     setLigneSubmitting(true);
     try {
-      // Pas d'endpoint de modification côté backend : on retire l'ancienne
-      // ligne puis on ajoute la nouvelle version.
       if (editingLigneId) {
         await removeLignePointage(editingLigneId);
       }

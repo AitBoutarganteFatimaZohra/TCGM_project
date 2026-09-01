@@ -26,8 +26,24 @@ public class SecurityUtils {
         return getCurrentUser().hasRole(roleName);
     }
 
+    public boolean isAdmin() {
+        return hasRole("ADMIN");
+    }
+
+    public boolean isChefProjet() {
+        return hasRole("CHEF_PROJET");
+    }
+
     public boolean isChefChantier() {
         return hasRole("CHEF_CHANTIER");
+    }
+
+    public boolean isMagasinier() {
+        return hasRole("MAGASINIER");
+    }
+
+    public boolean isAgentSaisie() {
+        return hasRole("AGENT_SAISIE");
     }
 
     /**
@@ -38,13 +54,20 @@ public class SecurityUtils {
         return siteRepository.findIdsByChefChantierId(userId);
     }
 
-    // =========================================================
-    // ✅ NOUVEAU : Agent de Saisie (§1 cahier des charges — dashboard
-    // scopé sur son unique chantier)
-    // =========================================================
+    /**
+     * ⚠️ NOUVEAU : IDs des chantiers dont l'utilisateur courant est Chef de Projet.
+     */
+    public List<Long> getChantierIdsAsChefProjet() {
+        Long userId = getCurrentUser().getId();
+        return siteRepository.findIdsByChefProjetId(userId);
+    }
 
-    public boolean isAgentSaisie() {
-        return hasRole("AGENT_SAISIE");
+    /**
+     * IDs des chantiers dont l'utilisateur courant est Magasinier.
+     */
+    public List<Long> getChantierIdsAsMagasinier() {
+        Long userId = getCurrentUser().getId();
+        return siteRepository.findIdsByMagasinierId(userId);
     }
 
     /**
@@ -55,5 +78,49 @@ public class SecurityUtils {
         Long userId = getCurrentUser().getId();
         List<Long> ids = siteRepository.findIdsByAgentSaisieId(userId);
         return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    // =========================================================
+    // ⚠️ NOUVEAU : scoping unifié, utilisé par Tâches / Affectations /
+    // Pointage pour restreindre visibilité + actions à "ses" chantiers.
+    // =========================================================
+
+    /**
+     * IDs des chantiers auxquels l'utilisateur courant est limité :
+     * - ADMIN : null (aucune restriction — accès à tout)
+     * - CHEF_PROJET : ses chantiers en tant que chef de projet
+     * - CHEF_CHANTIER : ses chantiers en tant que chef de chantier
+     * - MAGASINIER : ses chantiers en tant que magasinier
+     * - AGENT_SAISIE : son unique chantier (liste à 0 ou 1 élément)
+     * - tout autre cas : liste vide (aucun accès)
+     */
+    public List<Long> getScopedChantierIds() {
+        if (isAdmin()) {
+            return null;
+        }
+        if (isChefProjet()) {
+            return getChantierIdsAsChefProjet();
+        }
+        if (isChefChantier()) {
+            return getChantierIdsAsChefChantier();
+        }
+        if (isMagasinier()) {
+            return getChantierIdsAsMagasinier();
+        }
+        if (isAgentSaisie()) {
+            Long siteId = getSiteIdAsAgentSaisie();
+            return siteId == null ? List.of() : List.of(siteId);
+        }
+        return List.of();
+    }
+
+    /**
+     * true si le chantier donné est dans le périmètre de l'utilisateur
+     * courant (ou si celui-ci n'a aucune restriction — Admin).
+     */
+    public boolean isChantierInScope(Long chantierId) {
+        List<Long> scoped = getScopedChantierIds();
+        if (scoped == null) return true;
+        return chantierId != null && scoped.contains(chantierId);
     }
 }

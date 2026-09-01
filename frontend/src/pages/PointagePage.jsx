@@ -1,12 +1,22 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import usePointage from '../hooks/usePointage';
-import { getChantiers } from '../api/chantierApi';
+import { getChantiers, getMySites } from '../api/chantierApi';
+import useAuth from '../hooks/useAuth';
 import { STATUTS, STATUT_LABELS, STATUT_BADGE_CLASS, formatDateFr, formatTotalHeures } from '../utils/pointageFormat';
 
 const PAGE_SIZE = 10;
 
 const PointagePage = () => {
+  const { user } = useAuth();
+  const role = user?.role;
+  const isAgentSaisie = role === 'AGENT_SAISIE';
+  const isChefChantier = role === 'CHEF_CHANTIER';
+  const isChefProjet = role === 'CHEF_PROJET';
+  const isAdmin = role === 'ADMIN';
+  // ⚠️ NOUVEAU — suppression réservée à Admin + Agent de Saisie (aligné sur le tableau des droits)
+  const canDelete = isAdmin || isAgentSaisie;
+
   const { dossiers, loading, error, fetchDossiers, removeDossier, submitDossier } = usePointage();
 
   const [chantiers, setChantiers] = useState([]);
@@ -20,8 +30,24 @@ const PointagePage = () => {
   const [actionError, setActionError] = useState(null);
 
   useEffect(() => {
-    getChantiers().then((data) => setChantiers(data.content || data)).catch(() => {});
-  }, []);
+    if (isAgentSaisie) {
+      // Agent de saisie : ne voit que son site
+      getMySites()
+        .then((data) => {
+          const sites = data.content || data || [];
+          setChantiers(sites);
+          if (sites.length === 1) {
+            setSiteFilter(String(sites[0].id));
+          }
+        })
+        .catch(() => {});
+    } else {
+      // Les autres rôles : voient tous les chantiers
+      getChantiers()
+        .then((data) => setChantiers(data.content || data))
+        .catch(() => {});
+    }
+  }, [isAgentSaisie]);
 
   const reload = () => {
     const params = { page, size: PAGE_SIZE };
@@ -61,6 +87,8 @@ const PointagePage = () => {
     }
   };
 
+  const showSiteFilter = !isAgentSaisie || chantiers.length > 1;
+
   return (
     <div className="pointage-page">
       <div className="page-header">
@@ -68,27 +96,50 @@ const PointagePage = () => {
           🕐 Pointage
           {totalElements > 0 && <span className="counter-badge">{totalElements}</span>}
         </h1>
-        <Link to="/pointage/nouveau" className="btn-primary">
-          + Nouveau pointage
-        </Link>
+        {/* ✅ Seuls l'Agent de saisie, le Chef de projet et l'Admin peuvent créer un pointage */}
+        {(isAgentSaisie || isChefProjet || isAdmin) && (
+          <Link to="/pointage/nouveau" className="btn-primary">
+            + Nouveau pointage
+          </Link>
+        )}
       </div>
 
       <div className="filters">
-        <select
-          className="filter-select"
-          value={siteFilter}
-          onChange={(e) => {
-            setSiteFilter(e.target.value);
-            setPage(0);
-          }}
-        >
-          <option value="">Tous les chantiers</option>
-          {chantiers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+        {/* ✅ Filtre chantier - Agent de saisie voit uniquement son site */}
+        {showSiteFilter ? (
+          <select
+            className="filter-select"
+            value={siteFilter}
+            onChange={(e) => {
+              setSiteFilter(e.target.value);
+              setPage(0);
+            }}
+          >
+            {isAgentSaisie ? (
+              // Agent de saisie : uniquement ses sites
+              chantiers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))
+            ) : (
+              // Autres rôles : tous les chantiers
+              <>
+                <option value="">Tous les chantiers</option>
+                {chantiers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
+        ) : (
+          // Agent de saisie avec un seul site : affichage en lecture seule
+          <div className="filter-display" style={{ padding: '8px 12px', background: '#f3f4f6', borderRadius: 6 }}>
+            <strong>Chantier :</strong> {chantiers[0]?.name}
+          </div>
+        )}
 
         <input
           type="date"
@@ -124,9 +175,11 @@ const PointagePage = () => {
       ) : dossiers.length === 0 ? (
         <div className="empty-state">
           <p>Aucun pointage trouvé</p>
-          <Link to="/pointage/nouveau" className="btn-primary">
-            Créer le premier pointage
-          </Link>
+          {(isAgentSaisie || isChefProjet || isAdmin) && (
+            <Link to="/pointage/nouveau" className="btn-primary">
+              Créer le premier pointage
+            </Link>
+          )}
         </div>
       ) : (
         <div className="table-container">
@@ -163,24 +216,35 @@ const PointagePage = () => {
                       </Link>
                       {d.status === 'EN_ATTENTE' && (
                         <>
-                          <Link to={`/pointage/${d.id}/modifier`} className="icon-btn icon-btn--edit" title="Modifier">
-                            ✎
-                          </Link>
-                          <button
-                            className="icon-btn icon-btn--danger"
-                            title="Supprimer"
-                            onClick={() => handleDelete(d.id)}
-                          >
-                            🗑
-                          </button>
-                          <button
-                            className="icon-btn icon-btn--success"
-                            title="Soumettre pour validation"
-                            onClick={() => handleSubmit(d.id)}
-                            disabled={submittingId === d.id}
-                          >
-                            ✓
-                          </button>
+                          {/* ✅ Modification : Agent de saisie + Chef Projet + Admin */}
+                          {(isAgentSaisie || isChefProjet || isAdmin) && (
+                            <Link to={`/pointage/${d.id}/modifier`} className="icon-btn icon-btn--edit" title="Modifier">
+                              ✎
+                            </Link>
+                          )}
+
+                          {/* 🔧 CORRIGÉ : Suppression — Admin + Agent de saisie (le Chef de Projet ne doit PAS supprimer) */}
+                          {canDelete && (
+                            <button
+                              className="icon-btn icon-btn--danger"
+                              title="Supprimer"
+                              onClick={() => handleDelete(d.id)}
+                            >
+                              🗑
+                            </button>
+                          )}
+
+                          {/* ✅ Soumission : Agent de saisie + Chef Projet + Admin */}
+                          {(isAgentSaisie || isChefProjet || isAdmin) && (
+                            <button
+                              className="icon-btn icon-btn--success"
+                              title="Soumettre pour validation"
+                              onClick={() => handleSubmit(d.id)}
+                              disabled={submittingId === d.id}
+                            >
+                              ✓
+                            </button>
+                          )}
                         </>
                       )}
                     </div>

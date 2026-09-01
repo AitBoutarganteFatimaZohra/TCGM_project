@@ -43,10 +43,16 @@ const ACTION_LABELS = {
 const ROLES_NIVEAU1 = ['ADMIN', 'CHEF_CHANTIER'];
 const ROLES_NIVEAU2 = ['ADMIN', 'CHEF_PROJET'];
 const ROLES_PROPOSITION = ['ADMIN', 'MAGASINIER'];
+const ROLES_CREATE = ['ADMIN', 'MAGASINIER'];
+const ROLES_EDIT = ['ADMIN', 'MAGASINIER'];
+const ROLES_DELETE = ['ADMIN', 'MAGASINIER'];
 
 const RessourcesPage = () => {
   const { user } = useAuth();
   const canPropose = ROLES_PROPOSITION.includes(user?.role);
+  const canCreate = ROLES_CREATE.includes(user?.role);
+  const canEdit = ROLES_EDIT.includes(user?.role);
+  const canDelete = ROLES_DELETE.includes(user?.role);
 
   const { sites, loading: loadingSites } = useMySites();
   const { ressources, loading, error, fetchRessources, removeRessource } = useRessources();
@@ -156,9 +162,12 @@ const RessourcesPage = () => {
           📦 Ressources
           <span className="counter-badge">{ressources.length}</span>
         </h1>
-        <Link to="/ressources/create" className="btn-primary">
-          + Nouvelle ressource
-        </Link>
+        {/* ⚠️ SEULS LE MAGASINIER ET L'ADMIN PEUVENT CRÉER */}
+        {canCreate && (
+          <Link to="/ressources/create" className="btn-primary">
+            + Nouvelle ressource
+          </Link>
+        )}
       </div>
 
       <div className="filters">
@@ -205,7 +214,9 @@ const RessourcesPage = () => {
       {!loading && ressources.length === 0 ? (
         <div className="empty-state">
           <p>Aucune ressource trouvée</p>
-          <Link to="/ressources/create" className="btn-primary">Ajouter la première ressource</Link>
+          {canCreate && (
+            <Link to="/ressources/create" className="btn-primary">Ajouter la première ressource</Link>
+          )}
         </div>
       ) : (
         <div className="table-container">
@@ -249,7 +260,11 @@ const RessourcesPage = () => {
                     <td className="col-actions">
                       <div className="row-actions">
                         <Link to={`/ressources/${r.id}`} className="icon-btn icon-btn--view" title="Voir">👁️</Link>
-                        <Link to={`/ressources/${r.id}/modifier`} className="icon-btn icon-btn--edit" title="Modifier">✏️</Link>
+                        
+                        {/* ⚠️ SEULS LE MAGASINIER ET L'ADMIN PEUVENT MODIFIER */}
+                        {canEdit && (
+                          <Link to={`/ressources/${r.id}/modifier`} className="icon-btn icon-btn--edit" title="Modifier">✏️</Link>
+                        )}
 
                         {canPropose && !isPending && (
                           <select
@@ -289,7 +304,10 @@ const RessourcesPage = () => {
                           </>
                         )}
 
-                        <button onClick={() => handleDelete(r.id)} className="icon-btn icon-btn--danger" title="Supprimer">🗑️</button>
+                        {/* ⚠️ SEULS LE MAGASINIER ET L'ADMIN PEUVENT SUPPRIMER */}
+                        {canDelete && (
+                          <button onClick={() => handleDelete(r.id)} className="icon-btn icon-btn--danger" title="Supprimer">🗑️</button>
+                        )}
                       </div>
                     </td>
                   </tr>

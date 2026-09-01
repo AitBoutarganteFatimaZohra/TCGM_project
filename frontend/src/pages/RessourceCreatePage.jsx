@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useRessources from '../hooks/useRessources';
 import useMySites from '../hooks/useMySites';
+import useAuth from '../hooks/useAuth';
 
 const initialForm = {
   nom: '',
@@ -33,8 +34,16 @@ const RessourceCreatePage = () => {
   const navigate = useNavigate();
   const { addRessource, loading, error } = useRessources();
   const { sites, loading: loadingSites } = useMySites();
+  const { user } = useAuth();
   const [form, setForm] = useState(initialForm);
   const [siteId, setSiteId] = useState(null);
+
+  // ⚠️ REDIRECTION SI CHEF DE CHANTIER
+  useEffect(() => {
+    if (user?.role === 'CHEF_CHANTIER') {
+      navigate('/ressources');
+    }
+  }, [user, navigate]);
 
   if (!loadingSites && sites.length > 0 && siteId === null) {
     setSiteId(sites[0].id);
@@ -67,6 +76,20 @@ const RessourceCreatePage = () => {
       // erreur déjà exposée via `error`
     }
   };
+
+  // ⚠️ SI CHEF DE CHANTIER, AFFICHER UN MESSAGE D'ACCÈS REFUSÉ
+  if (user?.role === 'CHEF_CHANTIER') {
+    return (
+      <div className="chantiers-page">
+        <div className="error-banner" style={{ marginTop: '2rem', padding: '1.5rem', fontSize: '1.1rem' }}>
+          ⛔ Accès refusé. Les Chefs de chantier ne peuvent pas créer de ressources.
+        </div>
+        <button className="btn-view" onClick={() => navigate('/ressources')} style={{ marginTop: '1rem' }}>
+          Retour aux ressources
+        </button>
+      </div>
+    );
+  }
 
   if (loadingSites) {
     return <div className="loading">Chargement...</div>;

@@ -21,6 +21,7 @@ import com.tcgm.repository.SiteRepository;
 import com.tcgm.repository.OuvrierRepository;
 import com.tcgm.repository.TacheRepository;
 import com.tcgm.repository.UserRepository;
+import com.tcgm.security.SecurityUtils;
 import com.tcgm.service.PointageService;
 import com.tcgm.service.JournalService;
 import com.tcgm.model.enums.TypeAction;
@@ -28,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -50,6 +53,22 @@ public class PointageServiceImpl implements PointageService {
     private final UserRepository userRepository;
     private final PointageMapper pointageMapper;
     private final JournalService journalService;
+    // ⚠️ NOUVEAU
+    private final SecurityUtils securityUtils;
+
+    // =========================================================
+    // ⚠️ NOUVEAU — vérification d'appartenance au chantier
+    // =========================================================
+
+    private void checkChantierAccess(Long siteId) {
+        if (!securityUtils.isChantierInScope(siteId)) {
+            throw new AccessDeniedException("Vous n'avez pas accès à ce pointage (chantier hors de votre périmètre).");
+        }
+    }
+
+    private void checkDossierAccess(DossierPointage dossier) {
+        checkChantierAccess(dossier.getSite() != null ? dossier.getSite().getId() : null);
+    }
 
     @Override
     @Transactional
@@ -59,6 +78,8 @@ public class PointageServiceImpl implements PointageService {
 
         Site site = siteRepository.findById(request.getSiteId())
             .orElseThrow(() -> new ResourceNotFoundException("Site", request.getSiteId()));
+
+        checkChantierAccess(site.getId()); // ⚠️ NOUVEAU
 
         if (dossierRepository.existsBySiteIdAndDate(request.getSiteId(), request.getDate())) {
             throw new BadRequestException("Un dossier de pointage existe déjà pour cette date et ce site");
@@ -90,6 +111,7 @@ public class PointageServiceImpl implements PointageService {
     public DossierPointageResponse getDossierPointageById(Long id) {
         DossierPointage dossier = dossierRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", id));
+        checkDossierAccess(dossier); // ⚠️ NOUVEAU
         return pointageMapper.toDossierResponse(dossier);
     }
 
@@ -104,32 +126,23 @@ public class PointageServiceImpl implements PointageService {
             }
         }
 
-        // La date est validée ici (format), mais pas encore exploitée dans une
-        // requête dédiée tant qu'aucune méthode repository site+date paginée
-        // n'existe (comme dans le code d'origine).
         if (date != null) {
             LocalDate.parse(date);
         }
 
-        Page<DossierPointage> dossiers;
-        if (siteId != null && statut != null) {
-            dossiers = dossierRepository.findBySiteIdAndStatus(siteId, statut, pageable);
-        } else if (siteId != null) {
-            dossiers = dossierRepository.findBySiteId(siteId, pageable);
-        } else if (statut != null) {
-            dossiers = dossierRepository.findByStatus(statut, pageable);
-        } else {
-            dossiers = dossierRepository.findAll(pageable);
+        // ⚠️ NOUVEAU : scoping par rôle
+        List<Long> scoped = securityUtils.getScopedChantierIds();
+        if (scoped != null && scoped.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        if (siteId != null) {
+            checkChantierAccess(siteId);
         }
 
+        Page<DossierPointage> dossiers = dossierRepository.findDossiersWithFilters(siteId, statut, scoped, pageable);
         return dossiers.map(pointageMapper::toDossierResponse);
     }
 
-    /**
-     * Un dossier n'est modifiable (édition, ajout/retrait de ligne, suppression)
-     * que tant qu'il est en "EN_ATTENTE". Dès qu'il est soumis, validé ou
-     * rejeté, il est verrouillé (§5 et §7 du cahier des charges).
-     */
     private void verifierModifiable(DossierPointage dossier) {
         if (dossier.getStatus() != StatutPointage.EN_ATTENTE) {
             throw new BadRequestException(
@@ -145,10 +158,9 @@ public class PointageServiceImpl implements PointageService {
         DossierPointage dossier = dossierRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", id));
 
+        checkDossierAccess(dossier); // ⚠️ NOUVEAU
         verifierModifiable(dossier);
 
-        // La date ne peut pas être changée une fois le dossier créé (§5) —
-        // seules les notes sont librement modifiables.
         if (request.getNotes() != null) {
             dossier.setNotes(request.getNotes());
         }
@@ -175,6 +187,7 @@ public class PointageServiceImpl implements PointageService {
         DossierPointage dossier = dossierRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", id));
 
+        checkDossierAccess(dossier); // ⚠️ NOUVEAU
         verifierModifiable(dossier);
 
         journalService.logAction(
@@ -197,6 +210,7 @@ public class PointageServiceImpl implements PointageService {
         DossierPointage dossier = dossierRepository.findById(dossierId)
             .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", dossierId));
 
+        checkDossierAccess(dossier); // ⚠️ NOUVEAU
         verifierModifiable(dossier);
 
         Ouvrier ouvrier = ouvrierRepository.findById(request.getOuvrierId())
@@ -243,6 +257,7 @@ public class PointageServiceImpl implements PointageService {
             .orElseThrow(() -> new ResourceNotFoundException("Ligne de pointage", ligneId));
 
         DossierPointage dossier = ligne.getDossier();
+        checkDossierAccess(dossier); // ⚠️ NOUVEAU
         verifierModifiable(dossier);
 
         journalService.logAction(
@@ -265,6 +280,8 @@ public class PointageServiceImpl implements PointageService {
 
         DossierPointage dossier = dossierRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", id));
+
+        checkDossierAccess(dossier); // ⚠️ NOUVEAU
 
         if (dossier.getStatus() != StatutPointage.EN_ATTENTE) {
             throw new BadRequestException(
@@ -299,6 +316,8 @@ public class PointageServiceImpl implements PointageService {
 
         DossierPointage dossier = dossierRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", id));
+
+        checkDossierAccess(dossier); // ⚠️ NOUVEAU
 
         if (dossier.getStatus() != StatutPointage.EN_ATTENTE_VALIDATION) {
             throw new BadRequestException(
@@ -342,6 +361,8 @@ public class PointageServiceImpl implements PointageService {
         DossierPointage dossier = dossierRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Dossier de pointage", id));
 
+        checkDossierAccess(dossier); // ⚠️ NOUVEAU
+
         if (dossier.getStatus() != StatutPointage.EN_ATTENTE_VALIDATION) {
             throw new BadRequestException(
                 "Seul un dossier \"En attente de validation\" peut être rejeté (statut actuel : "
@@ -371,6 +392,8 @@ public class PointageServiceImpl implements PointageService {
 
     @Override
     public DossierPointageResponse getTodayPointage(Long siteId) {
+        checkChantierAccess(siteId); // ⚠️ NOUVEAU
+
         LocalDate today = LocalDate.now();
         DossierPointage dossier = dossierRepository.findBySiteIdAndDate(siteId, today)
             .orElseThrow(() -> new ResourceNotFoundException("Aucun pointage trouvé pour aujourd'hui"));
@@ -380,6 +403,8 @@ public class PointageServiceImpl implements PointageService {
 
     @Override
     public Map<String, Object> getPointageStatistiques(Long siteId) {
+        checkChantierAccess(siteId); // ⚠️ NOUVEAU
+
         Map<String, Object> stats = new HashMap<>();
 
         long totalDossiers = dossierRepository.findBySiteId(siteId, Pageable.unpaged()).getTotalElements();

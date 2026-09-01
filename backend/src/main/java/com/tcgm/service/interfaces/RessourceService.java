@@ -63,13 +63,16 @@ public class RessourceService {
     }
 
     // =========================================================
-    // ACTIONS MAGASINIER (déclenchent le circuit de validation)
+    // ACTIONS MAGASINIER / ADMIN (déclenchent le circuit de validation,
+    // SAUF pour l'Admin qui applique directement — cf. isAdmin ci-dessous)
     // =========================================================
 
     @Transactional
-    public RessourceResponse create(RessourceCreateRequest request) {
+    public RessourceResponse create(RessourceCreateRequest request, String actingRole) {
         Site site = siteRepository.findById(request.getSiteId())
                 .orElseThrow(() -> new RuntimeException("Site introuvable avec l'id " + request.getSiteId()));
+
+        boolean isAdmin = ROLE_ADMIN.equals(actingRole);
 
         Ressource r = Ressource.builder()
                 .nom(request.getNom())
@@ -82,19 +85,21 @@ public class RessourceService {
                 .numeroSerie(request.getNumeroSerie())
                 .seuilAlerte(request.getSeuilAlerte())
                 .site(site)
-                // Une création reste en attente de validation niveau 1 : rien à
-                // "restaurer" en cas de rejet définitif, donc pas de snapshot.
-                .validationStatus(StatutValidationRessource.EN_ATTENTE_CHEF_CHANTIER)
-                .pendingAction(TypeActionRessource.CREATION)
+                // ⚠️ NOUVEAU : l'Admin n'a pas besoin de validation — sa création
+                // est directement VALIDEE, sans pendingAction.
+                .validationStatus(isAdmin ? StatutValidationRessource.VALIDEE : StatutValidationRessource.EN_ATTENTE_CHEF_CHANTIER)
+                .pendingAction(isAdmin ? null : TypeActionRessource.CREATION)
                 .build();
 
         Ressource saved = ressourceRepository.save(r);
 
         journalService.logAction(
-                TypeAction.SOUMISSION,
+                isAdmin ? TypeAction.CREATION : TypeAction.SOUMISSION,
                 "RESSOURCE",
                 saved.getId(),
-                "Soumission de la création de la ressource: " + saved.getNom() + " (en attente de validation)",
+                isAdmin
+                        ? "Création directe de la ressource par l'Administrateur: " + saved.getNom()
+                        : "Soumission de la création de la ressource: " + saved.getNom() + " (en attente de validation)",
                 null
         );
 
@@ -102,16 +107,24 @@ public class RessourceService {
     }
 
     @Transactional
-    public RessourceResponse update(Long id, RessourceUpdateRequest request) {
+    public RessourceResponse update(Long id, RessourceUpdateRequest request, String actingRole) {
         Ressource r = ressourceRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Ressource introuvable avec l'id " + id));
 
-        ensureNoActionPending(r);
+        boolean isAdmin = ROLE_ADMIN.equals(actingRole);
+
+        // ⚠️ L'Admin peut modifier même si une action est déjà en attente
+        // (il a autorité sur tout) ; les autres rôles restent bloqués.
+        if (!isAdmin) {
+            ensureNoActionPending(r);
+        }
 
         Site site = siteRepository.findById(request.getSiteId())
                 .orElseThrow(() -> new RuntimeException("Site introuvable avec l'id " + request.getSiteId()));
 
-        r.snapshotAvant();
+        if (!isAdmin) {
+            r.snapshotAvant();
+        }
 
         r.setNom(request.getNom());
         r.setType(request.getType());
@@ -126,17 +139,26 @@ public class RessourceService {
         r.setSeuilAlerte(request.getSeuilAlerte());
         r.setSite(site);
 
-        r.setValidationStatus(StatutValidationRessource.EN_ATTENTE_CHEF_CHANTIER);
-        r.setPendingAction(TypeActionRessource.MODIFICATION);
+        if (isAdmin) {
+            // ⚠️ NOUVEAU : application directe, pas de circuit de validation
+            r.setValidationStatus(StatutValidationRessource.VALIDEE);
+            r.setPendingAction(null);
+            r.clearAvant();
+        } else {
+            r.setValidationStatus(StatutValidationRessource.EN_ATTENTE_CHEF_CHANTIER);
+            r.setPendingAction(TypeActionRessource.MODIFICATION);
+        }
         r.setRejectionReason(null);
 
         Ressource saved = ressourceRepository.save(r);
 
         journalService.logAction(
-                TypeAction.SOUMISSION,
+                isAdmin ? TypeAction.MODIFICATION : TypeAction.SOUMISSION,
                 "RESSOURCE",
                 saved.getId(),
-                "Soumission de la modification de la ressource: " + saved.getNom() + " (en attente de validation)",
+                isAdmin
+                        ? "Modification directe de la ressource par l'Administrateur: " + saved.getNom()
+                        : "Soumission de la modification de la ressource: " + saved.getNom() + " (en attente de validation)",
                 null
         );
 
@@ -144,26 +166,40 @@ public class RessourceService {
     }
 
     @Transactional
-    public RessourceResponse updateStatut(Long id, Ressource.StatutRessource statut) {
+    public RessourceResponse updateStatut(Long id, Ressource.StatutRessource statut, String actingRole) {
         Ressource r = ressourceRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Ressource introuvable avec l'id " + id));
 
-        ensureNoActionPending(r);
+        boolean isAdmin = ROLE_ADMIN.equals(actingRole);
 
-        r.snapshotAvant();
+        if (!isAdmin) {
+            ensureNoActionPending(r);
+        }
+
+        if (!isAdmin) {
+            r.snapshotAvant();
+        }
         r.setStatut(statut);
 
-        r.setValidationStatus(StatutValidationRessource.EN_ATTENTE_CHEF_CHANTIER);
-        r.setPendingAction(TypeActionRessource.CHANGEMENT_STATUT);
+        if (isAdmin) {
+            r.setValidationStatus(StatutValidationRessource.VALIDEE);
+            r.setPendingAction(null);
+            r.clearAvant();
+        } else {
+            r.setValidationStatus(StatutValidationRessource.EN_ATTENTE_CHEF_CHANTIER);
+            r.setPendingAction(TypeActionRessource.CHANGEMENT_STATUT);
+        }
         r.setRejectionReason(null);
 
         Ressource saved = ressourceRepository.save(r);
 
         journalService.logAction(
-                TypeAction.SOUMISSION,
+                isAdmin ? TypeAction.MODIFICATION : TypeAction.SOUMISSION,
                 "RESSOURCE",
                 saved.getId(),
-                "Soumission du changement de statut de la ressource " + saved.getNom() + " -> " + statut + " (en attente de validation)",
+                isAdmin
+                        ? "Changement direct de statut par l'Administrateur pour la ressource " + saved.getNom() + " -> " + statut
+                        : "Soumission du changement de statut de la ressource " + saved.getNom() + " -> " + statut + " (en attente de validation)",
                 null
         );
 
@@ -171,15 +207,32 @@ public class RessourceService {
     }
 
     /**
-     * Ne supprime plus directement : place la ressource en attente de
-     * validation de suppression. La suppression réelle n'a lieu qu'après
-     * validation (niveau 1 ou 2). Retourne l'état "en attente" de la
-     * ressource au lieu d'un simple 204 sans contenu.
+     * Pour le Magasinier : place en attente de validation.
+     * Pour l'Admin : suppression IMMÉDIATE et définitive (retourne null,
+     * comme valider() le fait déjà pour une action SUPPRESSION validée).
      */
     @Transactional
-    public RessourceResponse delete(Long id) {
+    public RessourceResponse delete(Long id, String actingRole) {
         Ressource r = ressourceRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Ressource introuvable avec l'id " + id));
+
+        boolean isAdmin = ROLE_ADMIN.equals(actingRole);
+
+        if (isAdmin) {
+            String nom = r.getNom();
+            Long ressourceId = r.getId();
+            ressourceRepository.delete(r);
+
+            journalService.logAction(
+                    TypeAction.SUPPRESSION,
+                    "RESSOURCE",
+                    ressourceId,
+                    "Suppression directe de la ressource par l'Administrateur: " + nom,
+                    null
+            );
+
+            return null; // la ressource n'existe plus
+        }
 
         ensureNoActionPending(r);
 
@@ -202,14 +255,10 @@ public class RessourceService {
 
     // =========================================================
     // CIRCUIT DE VALIDATION : Chef de Chantier -> Chef de Projet
+    // (inchangé — l'Admin peut toujours valider/rejeter au nom de
+    // n'importe quel niveau, cf. requireRole ci-dessous)
     // =========================================================
 
-    /**
-     * @param validatingRole rôle de l'utilisateur connecté qui valide
-     *                       (ADMIN, CHEF_CHANTIER ou CHEF_PROJET)
-     * @return null si la ressource a été supprimée suite à la validation
-     *         d'une action SUPPRESSION ; sinon la ressource à jour.
-     */
     @Transactional
     public RessourceResponse valider(Long id, String validatingRole) {
         Ressource r = ressourceRepository.findById(id)
@@ -241,7 +290,7 @@ public class RessourceService {
                     null
             );
 
-            return null; // la ressource n'existe plus
+            return null;
         }
 
         r.setValidationStatus(StatutValidationRessource.VALIDEE);
@@ -273,7 +322,6 @@ public class RessourceService {
         if (statutActuel == StatutValidationRessource.EN_ATTENTE_CHEF_CHANTIER) {
             requireRole(validatingRole, ROLE_CHEF_CHANTIER, "Seul le Chef de Chantier (niveau 1) peut rejeter cette demande");
 
-            // Rejet niveau 1 -> escalade automatique vers le Chef de Projet (recours)
             r.setValidationStatus(StatutValidationRessource.EN_ATTENTE_CHEF_PROJET);
             r.setRejectionReason(motif);
             Ressource saved = ressourceRepository.save(r);
@@ -298,8 +346,6 @@ public class RessourceService {
 
             switch (action) {
                 case CREATION -> {
-                    // Rien à restaurer : la ressource reste en base, marquée
-                    // REJETEE, pour traçabilité. Le Magasinier peut la supprimer.
                     r.setValidationStatus(StatutValidationRessource.REJETEE);
                     r.setPendingAction(null);
                 }
@@ -310,7 +356,6 @@ public class RessourceService {
                     r.setPendingAction(null);
                 }
                 case SUPPRESSION -> {
-                    // Annulation de la suppression : la ressource redevient stable.
                     r.setValidationStatus(StatutValidationRessource.VALIDEE);
                     r.setPendingAction(null);
                 }
